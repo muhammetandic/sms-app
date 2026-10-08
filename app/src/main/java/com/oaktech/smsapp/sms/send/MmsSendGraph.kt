@@ -11,6 +11,7 @@ import com.oaktech.smsapp.sms.mms.MmsPartSource
 import com.oaktech.smsapp.sms.mms.MmsSendCoordinator
 import com.oaktech.smsapp.sms.mms.MmscUrlResolver
 import com.oaktech.smsapp.sms.mms.PlatformApnResolver
+import com.oaktech.smsapp.sms.mms.PlatformMmsConnectionOpener
 import com.oaktech.smsapp.sms.mms.PlatformMmsPartSource
 
 /**
@@ -42,7 +43,7 @@ object MmsSendGraph {
 
     fun coordinator(context: Context): MmsSendCoordinator =
         MmsSendCoordinator(
-            poster = POSTER,
+            poster = poster(context),
             mmscResolver = resolver(context),
             context = context,
             isRoleHeld = { DataGraph.get(context).roleManager.isHeld() },
@@ -63,13 +64,16 @@ object MmsSendGraph {
             downloader ?: MmsDownloader(
                 context = context,
                 partSource = partSource(context),
-                autoRetriever = MmsAutoRetriever(HttpMmsRetriever(), resolver(context)),
-                acknowledger = MmsAcknowledger(POSTER, resolver(context)),
+                autoRetriever = MmsAutoRetriever(HttpMmsRetriever(opener(context)), resolver(context)),
+                acknowledger = MmsAcknowledger(poster(context), resolver(context)),
             ).also { downloader = it }
         }
     }
 
     private fun resolver(context: Context): MmscUrlResolver = PlatformApnResolver(context)
 
-    private val POSTER = HttpMmsPoster()
+    /** Fresh per call: the opener holds no state between transactions. */
+    private fun opener(context: Context) = PlatformMmsConnectionOpener(context)
+
+    private fun poster(context: Context) = HttpMmsPoster(opener(context))
 }

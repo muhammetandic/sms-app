@@ -1,8 +1,6 @@
 package com.oaktech.smsapp.sms.mms
 
 import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 /** Fetches the body of an MMS retrieve from the MMSC, mirroring [MmsPoster]. */
 interface MmsRetriever {
@@ -11,30 +9,28 @@ interface MmsRetriever {
 }
 
 /**
- * GETs retrieve-conf bytes from the MMSC over HttpURLConnection.
- *
- * Like [HttpMmsPoster], this rides whatever transport Android currently routes
- * through; a carrier-grade stack would bind the socket to the
- * `NET_CAPABILITY_MMS` network first. The seam keeps that swap-in possible
- * without a live MMSC.
+ * GETs retrieve-conf bytes from the MMSC over HttpURLConnection, on the route
+ * [MmsConnectionOpener] picks (the carrier's MMS bearer in production).
  */
-class HttpMmsRetriever : MmsRetriever {
+class HttpMmsRetriever(
+    private val opener: MmsConnectionOpener = DefaultRouteMmsConnectionOpener(),
+) : MmsRetriever {
 
-    override fun get(url: String): ByteArray? {
-        val connection = URL(url).openConnection() as HttpURLConnection
+    override fun get(url: String): ByteArray? = opener.open(url) { connection ->
         try {
             connection.requestMethod = "GET"
             connection.connectTimeout = HttpMmsPoster.TIMEOUT_MILLIS
             connection.readTimeout = HttpMmsPoster.TIMEOUT_MILLIS
             connection.setRequestProperty("Accept", HttpMmsPoster.HTTP_CONTENT_TYPE)
-            if (connection.responseCode !in 200..299) return null
-            return connection.inputStream.use { input ->
-                ByteArrayOutputStream().use { out -> input.copyTo(out); out.toByteArray() }
+            if (connection.responseCode !in 200..299) {
+                null
+            } else {
+                connection.inputStream.use { input ->
+                    ByteArrayOutputStream().use { out -> input.copyTo(out); out.toByteArray() }
+                }
             }
         } catch (throwable: Throwable) {
-            return null
-        } finally {
-            connection.disconnect()
+            null
         }
     }
 }

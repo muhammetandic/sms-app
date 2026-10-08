@@ -1,8 +1,6 @@
 package com.oaktech.smsapp.sms.mms
 
 import java.io.DataOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * The one seam the MMSC transaction needs.
@@ -23,31 +21,26 @@ interface MmsPoster {
 }
 
 /**
- * Posts over HttpURLConnection on whatever transport Android currently routes
- * mobile data through.
+ * Posts over HttpURLConnection on the route [MmsConnectionOpener] picks, which
+ * in production is the carrier's MMS bearer.
  *
- * A production MMS stack additionally drives [android.net.ConnectivityManager]
- * `requestNetwork(NET_CAPABILITY_MMS)` so the POST rides the MMSC's own
- * network. That callback dance cannot be exercised without a live carrier, so
- * it is deliberately kept out of this class and behind the [MmsPoster] seam;
- * the swap-in for on-device validation is the whole point of the interface.
+ * The network binding lives in the opener rather than here so this class stays
+ * a straight HTTP POST and the bearer's request/hold/release lifecycle is
+ * written once for every MMSC leg (send, retrieve, acknowledge).
  */
-class HttpMmsPoster : MmsPoster {
+class HttpMmsPoster(
+    private val opener: MmsConnectionOpener = DefaultRouteMmsConnectionOpener(),
+) : MmsPoster {
 
-    override fun post(mmscUrl: String, pdu: ByteArray): Int {
-        val connection = URL(mmscUrl).openConnection() as HttpURLConnection
-        try {
-            connection.requestMethod = "POST"
-            connection.doOutput = true
-            connection.setRequestProperty("Content-Type", HTTP_CONTENT_TYPE)
-            connection.setRequestProperty("Accept", HTTP_CONTENT_TYPE)
-            connection.setConnectTimeout(TIMEOUT_MILLIS)
-            connection.setReadTimeout(TIMEOUT_MILLIS)
-            DataOutputStream(connection.outputStream).use { it.write(pdu) }
-            return connection.responseCode
-        } finally {
-            connection.disconnect()
-        }
+    override fun post(mmscUrl: String, pdu: ByteArray): Int = opener.open(mmscUrl) { connection ->
+        connection.requestMethod = "POST"
+        connection.doOutput = true
+        connection.setRequestProperty("Content-Type", HTTP_CONTENT_TYPE)
+        connection.setRequestProperty("Accept", HTTP_CONTENT_TYPE)
+        connection.setConnectTimeout(TIMEOUT_MILLIS)
+        connection.setReadTimeout(TIMEOUT_MILLIS)
+        DataOutputStream(connection.outputStream).use { it.write(pdu) }
+        connection.responseCode
     }
 
     companion object {

@@ -65,8 +65,8 @@ object MmsReceiveWorker {
     }
 
     private suspend fun handleNotification(context: Context, pdu: MmsPdu) {
-        val acknowledger = MmsAcknowledger(HttpMmsPoster(), PlatformApnResolver(context))
-        val autoRetriever = MmsAutoRetriever(HttpMmsRetriever(), PlatformApnResolver(context))
+        val acknowledger = MmsAcknowledger(poster(context), PlatformApnResolver(context))
+        val autoRetriever = MmsAutoRetriever(retriever(context), PlatformApnResolver(context))
         val retrieveBytes = autoRetriever.retrieve(pdu)
         val retrievePdu = retrieveBytes?.let { MmsPduParser.parse(it) }
         if (retrievePdu?.messageType == MmsMessageType.RETRIEVE_CONF) {
@@ -124,7 +124,7 @@ object MmsReceiveWorker {
             // The platform may deliver a retrieve-conf without a preceding
             // notification (the push and the fetch are independent transactions);
             // closing the transaction here is what stops the MMSC pestering.
-            MmsAcknowledger(HttpMmsPoster(), PlatformApnResolver(context))
+            MmsAcknowledger(poster(context), PlatformApnResolver(context))
                 .acknowledge(pdu.transactionId)
         }
     }
@@ -212,6 +212,14 @@ object MmsReceiveWorker {
             "Stored inbound MMS from ${inbounds.address} (${stored.size} attachment(s), row $rowId, $downloadState)",
         )
     }
+
+    /**
+     * A fresh opener per leg: it holds nothing between requests, and building
+     * one per transaction keeps concurrent receives from sharing state.
+     */
+    private fun poster(context: Context) = HttpMmsPoster(PlatformMmsConnectionOpener(context))
+
+    private fun retriever(context: Context) = HttpMmsRetriever(PlatformMmsConnectionOpener(context))
 
     private data class StoredAttachment(val file: File, val contentType: String)
 }
