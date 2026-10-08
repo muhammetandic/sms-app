@@ -1,6 +1,7 @@
 package com.oaktech.smsapp.sms.send
 
 import android.content.Context
+import com.oaktech.smsapp.data.DataGraph
 import com.oaktech.smsapp.sms.mms.HttpMmsPoster
 import com.oaktech.smsapp.sms.mms.HttpMmsRetriever
 import com.oaktech.smsapp.sms.mms.MmsAcknowledger
@@ -40,7 +41,12 @@ object MmsSendGraph {
     }
 
     fun coordinator(context: Context): MmsSendCoordinator =
-        MmsSendCoordinator(POSTER, resolver(context), context)
+        MmsSendCoordinator(
+            poster = POSTER,
+            mmscResolver = resolver(context),
+            context = context,
+            isRoleHeld = { DataGraph.get(context).roleManager.isHeld() },
+        )
 
     fun partSource(context: Context): MmsPartSource {
         val existing = partSource

@@ -417,6 +417,15 @@ class MessageRepository(
     /** Marks a message failed with the platform code behind the failure. */
     suspend fun updateOutgoingError(id: Long, errorCode: Int) = messageDao.updateError(id, errorCode)
 
+    /**
+     * Stores the split an outgoing message was really sent as, so a result that
+     * arrives in a new process (the in-memory tracker died with the old one)
+     * can rebuild an aggregator for every part instead of resolving on the
+     * first report that shows up.
+     */
+    suspend fun updateOutgoingPartCount(id: Long, partCount: Int) =
+        messageDao.updatePartCount(id, partCount)
+
     /** One message row, for retrying or inspecting a single message. */
     suspend fun getMessage(id: Long): MessageEntity? = messageDao.getById(id)
 

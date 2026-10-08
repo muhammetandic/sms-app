@@ -21,6 +21,16 @@ import kotlinx.coroutines.launch
 class SmsSendCoordinator(
     context: Context,
     private val transport: SmsTransport,
+    /**
+     * Whether this app currently holds the default-SMS role.
+     *
+     * Checked here rather than only in the composer because losing the role
+     * also revokes SEND_SMS mid-session: a send started from a stale UI state
+     * would otherwise persist a row that the radio silently refuses, leaving a
+     * bubble that never resolves. Production wiring reads the live role; tests
+     * stand in as the default app.
+     */
+    private val isRoleHeld: () -> Boolean = { true },
 ) {
 
     private val appContext = context.applicationContext
@@ -29,6 +39,16 @@ class SmsSendCoordinator(
     private val trackers = ConcurrentTrackers()
 
     suspend fun send(recipient: String, body: String): SendOutcome {
+        if (!isRoleHeld()) {
+            android.util.Log.w(LogTags.SEND, "Rejected send: the app is not the default SMS app")
+            return SendOutcome(
+                state = SendState.FAILED,
+                failedParts = 0,
+                totalParts = 0,
+                code = ResultCode.NO_DEFAULT_SMS_APP,
+            )
+        }
+
         when (val validation = SendValidator.validate(recipient, body)) {
             is SendValidator.Result.Invalid -> {
                 android.util.Log.w(LogTags.SEND, "Rejected send: ${validation.detail}")
@@ -36,7 +56,7 @@ class SmsSendCoordinator(
                     state = SendState.FAILED,
                     failedParts = 0,
                     totalParts = 0,
-                    code = ResultCode.NO_DEFAULT_SMS_APP,
+                    code = ResultCode.GENERIC_FAILURE,
                 )
             }
 
@@ -60,6 +80,8 @@ class SmsSendCoordinator(
             repository.updateOutgoingStatus(rowId, MessageStatus.FAILED)
             return SendOutcome(SendState.FAILED, 0, parts.size, ResultCode.LIMIT_EXCEEDED)
         }
+
+        repository.updateOutgoingPartCount(rowId, parts.size)
 
         val token = trackers.register(rowId, parts.size)
 

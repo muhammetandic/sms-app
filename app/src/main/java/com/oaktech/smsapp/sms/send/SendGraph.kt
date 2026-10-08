@@ -1,6 +1,7 @@
 package com.oaktech.smsapp.sms.send
 
 import android.content.Context
+import com.oaktech.smsapp.data.DataGraph
 
 /**
  * Holds the process-wide send coordinator and its in-flight trackers.
@@ -18,6 +19,7 @@ object SendGraph {
             coordinatorInstance ?: SmsSendCoordinator(
                 context = context.applicationContext,
                 transport = PlatformSmsTransport(context),
+                isRoleHeld = { DataGraph.get(context.applicationContext).roleManager.isHeld() },
             ).also { coordinatorInstance = it }
         }
 }

@@ -5,13 +5,20 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -22,6 +29,7 @@ import androidx.navigation.navArgument
 import com.oaktech.smsapp.contacts.ContactNameResolver
 import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.data.DataGraph
+import com.oaktech.smsapp.permission.PermissionSetup
 import com.oaktech.smsapp.permission.SmsPermissions
 import com.oaktech.smsapp.sms.mms.MmsAttachmentStore
 import com.oaktech.smsapp.sms.send.MmsSendGraph
@@ -31,6 +39,8 @@ import com.oaktech.smsapp.ui.compose.ComposeViewModel
 import com.oaktech.smsapp.ui.conversations.ConversationsRoute
 import com.oaktech.smsapp.ui.conversations.ConversationsViewModel
 import com.oaktech.smsapp.ui.permission.PermissionGate
+import com.oaktech.smsapp.ui.permission.PermissionRevokedBanner
+import com.oaktech.smsapp.ui.permission.openAppSettings
 import com.oaktech.smsapp.ui.search.SearchRoute
 import com.oaktech.smsapp.ui.search.SearchViewModel
 import com.oaktech.smsapp.ui.settings.SettingsRoute
@@ -59,10 +69,27 @@ fun SmsApp(
     val context = LocalContext.current
     val navController = rememberNavController()
     val roleState = rememberSmsRoleState()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     // Re-read on every resume: the system can revoke SMS access when the role
     // changes, and a stale "granted" would leave the UI offering to send.
     var grantedPermissions by remember { mutableStateOf(SmsPermissions.allGranted(context)) }
+
+    // Whether the grant has ever succeeded decides what a missing permission
+    // means: never granted is a first launch and gates, granted-then-revoked is
+    // a revocation and must not, because the local store is still readable and
+    // hiding it would present data loss to the user.
+    var setupCompleted by remember { mutableStateOf(PermissionSetup.everGranted(context)) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                grantedPermissions = SmsPermissions.allGranted(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
@@ -74,6 +101,10 @@ fun SmsApp(
         // on API 33+ is acceptable: the app works without alerts, and the user
         // can enable them later from system settings.
         grantedPermissions = SmsPermissions.allGranted(context, SmsPermissions.essential)
+        if (grantedPermissions) {
+            PermissionSetup.markGranted(context)
+            setupCompleted = true
+        }
     }
 
     val requestPermissions: () -> Unit = {
@@ -94,7 +125,7 @@ fun SmsApp(
         }
     }
 
-    if (!grantedPermissions) {
+    if (!grantedPermissions && !setupCompleted) {
         PermissionGate(
             missing = SmsPermissions.missing(context),
             onRequestPermissions = requestPermissions,
@@ -102,14 +133,24 @@ fun SmsApp(
         return
     }
 
-    SmsNavHost(
-        navController = navController,
-        isSmsRoleHeld = { roleState.isHeld },
-        requestSmsRole = requestSmsRole,
-        initialConversationId = initialConversationId,
-        composeRequest = composeRequest,
-        roleHeldNow = roleState.isHeld,
-    )
+    Column(modifier = Modifier.fillMaxSize()) {
+        // The role banner inside each screen covers a role-loss revocation,
+        // since re-taking the role grants the SMS group back. This one only
+        // fires while the role is still held — permissions the user switched
+        // off by hand cannot be won back by any in-app flow.
+        if (!grantedPermissions && roleState.isHeld) {
+            PermissionRevokedBanner(onOpenSettings = { openAppSettings(context) })
+        }
+
+        SmsNavHost(
+            navController = navController,
+            isSmsRoleHeld = { roleState.isHeld },
+            requestSmsRole = requestSmsRole,
+            initialConversationId = initialConversationId,
+            composeRequest = composeRequest,
+            roleHeldNow = roleState.isHeld,
+        )
+    }
 }
 
 /** A SENDTO request from another app, parsed into the composer. */

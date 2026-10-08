@@ -23,6 +23,14 @@ class MmsSendCoordinator(
     private val poster: MmsPoster,
     private val mmscResolver: MmscUrlResolver,
     context: Context,
+    /**
+     * Whether this app currently holds the default-SMS role, checked before any
+     * row is persisted so a send started from a stale UI cannot leave a bubble
+     * the platform will never accept. Defaults to held because tests build this
+     * coordinator directly and stand in as the default app; production wiring
+     * in `MmsSendGraph` passes the live check.
+     */
+    private val isRoleHeld: () -> Boolean = { true },
 ) {
 
     private val appContext = context.applicationContext
@@ -33,6 +41,11 @@ class MmsSendCoordinator(
         body: String,
         attachments: List<AttachmentPart>,
     ): SendOutcome {
+        if (!isRoleHeld()) {
+            Log.w(LogTags.SEND, "Rejected MMS send: the app is not the default SMS app")
+            return SendOutcome(SendState.FAILED, 0, 1, ResultCode.NO_DEFAULT_SMS_APP)
+        }
+
         val members = recipients.map { it.trim() }.filter { it.isNotBlank() }
         if (members.isEmpty()) {
             return SendOutcome(SendState.FAILED, 0, 1, ResultCode.GENERIC_FAILURE)

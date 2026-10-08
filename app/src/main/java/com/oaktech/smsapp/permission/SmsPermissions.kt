@@ -19,6 +19,14 @@ object SmsPermissions {
         Manifest.permission.READ_SMS,
         Manifest.permission.RECEIVE_SMS,
         Manifest.permission.SEND_SMS,
+        // MMS arrives as a WAP push and these two guard it separately from
+        // RECEIVE_SMS. Both are dangerous permissions in the SMS group, so a
+        // request that omits them leaves the platform silently dropping
+        // WAP_PUSH_DELIVER on a fresh install and the MMS receive path dead —
+        // nothing else in the app can detect that, because a denied dangerous
+        // permission behaves exactly like an MMS that never came.
+        Manifest.permission.RECEIVE_MMS,
+        Manifest.permission.RECEIVE_WAP_PUSH,
         Manifest.permission.READ_CONTACTS,
         // Names the active SIMs so the settings screen can offer a send-subscription
         // choice; without it the list is hidden rather than demanded separately.
@@ -52,7 +60,14 @@ object SmsPermissions {
      *
      * Losing the SMS role revokes these at runtime, so the UI must treat a loss
      * as a permission loss too rather than assuming a granted flag is stable.
+     * The set is the whole SMS group: acquiring the role is what grants them
+     * again, which is why a role-loss revocation is answered by the "set as
+     * default" flow rather than by a second permission prompt.
      */
     fun requiresSmsRole(permission: String): Boolean =
-        permission == Manifest.permission.READ_SMS || permission == Manifest.permission.RECEIVE_SMS
+        permission == Manifest.permission.READ_SMS ||
+            permission == Manifest.permission.RECEIVE_SMS ||
+            permission == Manifest.permission.SEND_SMS ||
+            permission == Manifest.permission.RECEIVE_MMS ||
+            permission == Manifest.permission.RECEIVE_WAP_PUSH
 }

@@ -72,11 +72,16 @@ fun ConversationsRoute(
 
     // Contact names are resolved per address off the Room flow, so they cannot
     // be part of the query. Re-resolved on resume because a name can be added to
-    // the device while this screen is in the background.
+    // the device while this screen is in the background. The role is re-read for
+    // the same reason: it can be revoked from system settings while the app is
+    // paused, and the read-only banner keys off the ViewModel's copy of it.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(viewModel, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) onResume()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.refreshRole()
+                onResume()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

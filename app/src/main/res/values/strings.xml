@@ -48,6 +48,8 @@
     <string name="permission_body">This app needs access to your messages and contacts to show and send SMS.</string>
     <string name="permission_grant">Grant permissions</string>
     <string name="permission_settings">Open settings</string>
+    <string name="permission_revoked_title">Message access turned off</string>
+    <string name="permission_revoked_body">Some permissions were switched off in system settings, so new messages can no longer arrive here. Turn them back on to resume.</string>
 
     <string name="send_sms_test">Send test SMS</string>
     <!-- A literal dial string, not prose: translating it would break the send. -->

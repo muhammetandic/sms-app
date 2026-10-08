@@ -132,6 +132,31 @@ class MmsSendCoordinatorTest {
         assertNull(poster.lastPdu())
     }
 
+    @Test
+    fun `a send without the default role fails before anything is recorded`() = runTest {
+        val poster = FakePoster(200)
+        val coordinator = MmsSendCoordinator(
+            poster = poster,
+            mmscResolver = FakeApn("http://mmsc.example"),
+            context = context,
+            isRoleHeld = { false },
+        )
+
+        val outcome = coordinator.send(
+            recipients = listOf("+15550000001"),
+            subject = null,
+            body = "never leaves",
+            attachments = emptyList(),
+        )
+
+        assertEquals(SendOutcome(SendState.FAILED, 0, 1, ResultCode.NO_DEFAULT_SMS_APP), outcome)
+        assertNull("nothing was posted", poster.lastPdu())
+        assertTrue(
+            "no row was persisted for a send the radio would refuse",
+            repository.observeMessages(1L).first().isEmpty(),
+        )
+    }
+
     private class FakePoster(private val status: Int) : MmsPoster {
         private var lastPosted: ByteArray? = null
 

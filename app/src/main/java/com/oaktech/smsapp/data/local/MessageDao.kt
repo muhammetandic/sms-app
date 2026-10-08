@@ -68,6 +68,14 @@ interface MessageDao {
     @Query("UPDATE messages SET status = :status WHERE id = :id AND status = 'SENDING'")
     suspend fun markIfSending(id: Long, status: MessageStatus)
 
+    /**
+     * The split happens after the row exists (a divide failure still has to
+     * leave a visible FAILED bubble), so the real part count lands here
+     * instead of at insert time.
+     */
+    @Query("UPDATE messages SET part_count = :partCount WHERE id = :id")
+    suspend fun updatePartCount(id: Long, partCount: Int)
+
     /** Marks a still-SENDING row failed with the platform code. */
     @Query("UPDATE messages SET status = 'FAILED', error_code = :errorCode WHERE id = :id AND status = 'SENDING'")
     suspend fun failIfSending(id: Long, errorCode: Int)

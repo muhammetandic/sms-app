@@ -46,6 +46,8 @@
     <string name="permission_body">Bu uygulamanın SMS göstermesi ve göndermesi için mesajlarınıza ve kişilerinize erişmesi gerekiyor.</string>
     <string name="permission_grant">İzinleri ver</string>
     <string name="permission_settings">Ayarları aç</string>
+    <string name="permission_revoked_title">Mesaj erişimi kapatıldı</string>
+    <string name="permission_revoked_body">Sistem ayarlarında bazı izinler kapatıldı, bu nedenle yeni mesajlar buraya artık ulaşmıyor. Devam etmek için yeniden açın.</string>
 
     <string name="send_sms_test">Test SMS gönder</string>
     <!-- test_recipient is a literal dial string and is marked translatable="false". -->
