@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The dark counterpart of Theme.SmsApp. Without it the platform keeps the
+      light window background and the system bars in their light form even
+      though Compose is rendering a dark scheme underneath.
+    -->
+    <style name="Theme.SmsApp" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <!-- See the day variant: stated outright so it cannot be inherited wrong. -->
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

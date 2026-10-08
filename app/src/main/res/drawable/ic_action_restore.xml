@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Arrow leaving a box, meaning "move back out". Used to return a conversation
+  from the spam folder to the inbox.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M20,5H9.82l2,-2H4v16h16V5zM14,9h-2v3H9l3.5,3.5L16,12h-2V9z" />
+</vector>

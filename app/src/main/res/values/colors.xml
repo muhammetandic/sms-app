@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#1B6C3A</color>
+
+    <!--
+      Drawn before Compose gets a frame, so it has to be a resource rather than
+      a colour read from the theme. The -night variant below keeps this from
+      flashing white on a dark system.
+    -->
+    <color name="window_background">#FBFDF8</color>
+</resources>

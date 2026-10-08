@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SMS</string>
+
+    <string name="conversations_empty">No conversations yet</string>
+    <string name="conversations_title">Messages</string>
+    <string name="conversations_group_label">Group</string>
+    <!-- The content description of the floating action button; the label is an
+         icon, so without this the control is unlabelled for a screen reader. -->
+    <string name="conversations_compose">New message</string>
+    <!--
+      A plural rather than "%d unread" because the noun carries the count in some
+      languages. Turkish happens not to, but a format string that hardcodes the
+      noun cannot be translated into one that does.
+    -->
+    <plurals name="conversation_unread_count">
+        <item quantity="one">%1$d unread</item>
+        <item quantity="other">%1$d unread</item>
+    </plurals>
+    <string name="conversation_row_description">Conversation with %1$s. %2$s. %3$s. %4$s</string>
+    <string name="conversation_row_description_no_snippet">No messages</string>
+
+    <string name="thread_empty">No messages in this conversation</string>
+    <string name="thread_back">Back</string>
+    <string name="thread_draft_hint">Message</string>
+    <string name="thread_send">Send message</string>
+    <string name="thread_composer_description">Message text</string>
+    <string name="thread_outgoing_description">You, %1$s: %2$s</string>
+    <string name="thread_incoming_description">%1$s: %2$s</string>
+    <string name="thread_status_sending">Sending</string>
+    <string name="thread_status_sent">Sent</string>
+    <string name="thread_status_delivered">Delivered</string>
+    <string name="thread_status_failed">Failed to send</string>
+    <string name="thread_send_failed">Message could not be sent</string>
+    <string name="thread_attach">Add attachment</string>
+    <string name="thread_remove_attachment">Remove attachment</string>
+    <string name="thread_download_attachment">Download</string>
+    <string name="thread_share_attachment">Share attachment</string>
+    <string name="thread_send_failed_dismiss">Dismiss</string>
+    <string name="thread_mute">Mute conversation</string>
+    <string name="thread_unmute">Unmute conversation</string>
+
+    <string name="role_lost_title">Not your default SMS app</string>
+    <string name="role_lost_body">Messages can no longer be sent or received until you make this app your default SMS app.</string>
+    <string name="role_lost_action">Set as default</string>
+
+    <string name="permission_title">SMS permissions needed</string>
+    <string name="permission_body">This app needs access to your messages and contacts to show and send SMS.</string>
+    <string name="permission_grant">Grant permissions</string>
+    <string name="permission_settings">Open settings</string>
+
+    <string name="send_sms_test">Send test SMS</string>
+    <!-- A literal dial string, not prose: translating it would break the send. -->
+    <string name="test_recipient" translatable="false">+15551234567</string>
+
+    <string name="compose_title">New message</string>
+    <string name="compose_recipient_label">Recipient phone number</string>
+    <string name="compose_recipient_hint">To</string>
+    <string name="compose_send">Send</string>
+
+    <string name="notification_channel_name">Incoming messages</string>
+    <string name="notification_channel_description">Alerts when a new text message arrives</string>
+    <string name="notification_action_reply">Reply</string>
+    <string name="notification_action_read">Read</string>
+    <string name="notification_action_spam">Spam</string>
+    <string name="notification_action_delete">Delete</string>
+    <!-- Shown when an MMS has media and no text to describe it. -->
+    <string name="notification_mms_no_text">Multimedia message</string>
+    <plurals name="notification_attachments">
+        <item quantity="one">%1$d attachment</item>
+        <item quantity="other">%1$d attachments</item>
+    </plurals>
+
+    <string name="spam_title">Spam</string>
+    <string name="spam_empty">No spam messages</string>
+    <string name="spam_open">Open spam folder</string>
+    <string name="spam_restore">Move out of spam</string>
+
+    <string name="selection_close">Close selection</string>
+    <!-- The toolbar title while several conversations are selected. -->
+    <plurals name="selection_count">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <string name="conversations_pin">Pin to top</string>
+    <string name="conversations_unpin">Remove from top</string>
+    <string name="conversations_move_to_spam">Move to spam</string>
+    <string name="conversations_move_to_inbox">Move to inbox</string>
+    <string name="conversations_mark_unread">Mark unread</string>
+
+    <!-- Actions offered when a phone number is tapped inside a message. -->
+    <string name="phone_action_message">Message</string>
+    <string name="phone_action_call">Call</string>
+    <string name="phone_action_add_to_contacts">Add to contacts</string>
+
+    <string name="delete_message_title">Delete message?</string>
+    <string name="delete_message_body">This message will be permanently deleted.</string>
+
+    <!-- Contents and actions of the sheet shown for a long-pressed message. -->
+    <string name="message_details_title">Message details</string>
+    <string name="message_details_sent_at">Sent</string>
+    <string name="message_details_delivered_at">Delivered</string>
+    <string name="message_details_parts_title">Segments</string>
+    <plurals name="message_details_parts">
+        <item quantity="one">%1$d segment</item>
+        <item quantity="other">%1$d segments</item>
+    </plurals>
+    <string name="message_details_sim">SIM</string>
+    <string name="message_details_error">Error</string>
+    <string name="message_action_copy">Copy</string>
+    <string name="message_action_share">Share</string>
+    <string name="message_action_forward">Forward</string>
+    <string name="message_action_resend">Resend</string>
+    <string name="message_copied">Message copied</string>
+
+    <string name="search_title">Search</string>
+    <string name="search_hint">Search messages and contacts</string>
+    <string name="search_prompt">Search your messages and contacts</string>
+    <string name="search_empty">No messages match</string>
+    <string name="search_row_description">%1$s. %2$s. %3$s</string>
+    <string name="delete_selected_title">Delete conversations?</string>
+    <plurals name="delete_selected_body">
+        <item quantity="one">%1$d conversation and all of its messages will be permanently deleted.</item>
+        <item quantity="other">%1$d conversations and all of their messages will be permanently deleted.</item>
+    </plurals>
+
+    <string name="dialog_delete">Delete</string>
+    <string name="dialog_cancel">Cancel</string>
+
+    <string name="settings_title">Settings</string>
+    <!-- The content description of the toolbar icon that opens the settings screen. -->
+    <string name="settings_open">Settings</string>
+    <string name="settings_default_sms">Default SMS app</string>
+    <string name="settings_default_sms_held">This app is your default SMS app.</string>
+    <string name="settings_default_sms_lost">This app is not your default SMS app. Messages can be sent and received only while it is.</string>
+    <string name="settings_set_default">Set as default SMS app</string>
+    <string name="settings_about">About</string>
+    <string name="settings_version">Version</string>
+
+    <string name="settings_sim">SIM</string>
+    <string name="settings_sim_body">Choose which SIM new messages are sent on.</string>
+    <string name="settings_sim_follow_default">System default</string>
+
+    <string name="settings_blocked">Blocked senders</string>
+    <string name="settings_blocked_body">Messages from blocked senders are stored in spam without notifying you.</string>
+    <string name="settings_block_hint">Phone number or sender</string>
+    <string name="settings_block_add">Block</string>
+    <string name="settings_block_empty">No blocked senders</string>
+    <string name="settings_block_remove">Unblock</string>
+    <string name="phone_action_block">Block</string>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Must match the dark scheme's surface, or the launch frame flashes light. -->
+    <color name="window_background">#101410</color>
+</resources>

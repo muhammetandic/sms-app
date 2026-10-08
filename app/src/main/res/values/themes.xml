@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The platform theme only paints the window before Compose draws its first
+      frame; everything else is MaterialTheme in ui/theme. Pairing this with the
+      -night override and a night-qualified windowBackground keeps the launch
+      frame from flashing white in dark mode.
+
+      Material.Light is chosen over DeviceDefault so the status bar icons are
+      dark-on-light; Compose's enableEdgeToEdge then corrects the icon tint once
+      it knows which scheme is in effect.
+    -->
+    <style name="Theme.SmsApp" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+        <!--
+          Declared rather than inherited. The platform light theme sets this, but
+          inheriting it is what silently lets the night variant regress: drop
+          values-night/themes.xml and the light form keeps applying over a dark
+          window, leaving invisible status bar icons until Compose draws.
+        -->
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
