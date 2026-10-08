@@ -35,9 +35,11 @@ import java.util.UUID
  * always available regardless of whether the app holds the default SMS role.
  *
  * Destructive and read-state changes are mirrored back to the provider through
- * [telephonyWriter] for the messages this app can identify there (imported
- * history and reported sends have a provider id; live arrivals do not), so the
- * system SMS app does not keep showing rows this app deleted or left unread.
+ * [telephonyWriter] for the messages this app can identify there, and the
+ * receive and send paths mirror their own rows through it as they happen
+ * ([mirrorInboundToProvider], [mirrorSentToProvider]), so the system SMS app
+ * shows the same conversation this one does instead of an inbox that only ever
+ * holds imported history.
  */
 class MessageRepository(
     private val conversationDao: ConversationDao,
@@ -117,8 +119,8 @@ class MessageRepository(
     suspend fun deleteMessage(messageId: Long) {
         val message = messageDao.getById(messageId) ?: return
         // Mirror before removing locally: the provider row is only reachable
-        // while the local row still carries its id. Live arrivals have no
-        // provider id and are skipped.
+        // while the local row still carries its id. Rows the provider refused
+        // to store have none and are skipped.
         message.providerId?.let { telephonyWriter.delete(listOf(ProviderRowRef(it, message.isMms))) }
         val conversationId = message.conversationId
         val removed = messageDao.delete(messageId)
@@ -189,8 +191,8 @@ class MessageRepository(
     /**
      * The provider rows behind a batch of local messages, for write-back.
      *
-     * Only rows with a known provider id are mirrored; empty for live arrivals
-     * and duplicates, which have no stable provider identity.
+     * Only rows with a known provider id are mirrored; empty for rows the
+     * provider refused to store, which have no identity to write back to.
      */
     private fun List<MessageEntity>.providerRefs(): List<ProviderRowRef> =
         mapNotNull { message -> message.providerId?.let { ProviderRowRef(it, message.isMms) } }
@@ -407,15 +409,70 @@ class MessageRepository(
         )
     }
 
-    suspend fun updateOutgoingStatus(id: Long, status: MessageStatus, providerId: Long? = null) =
+    suspend fun updateOutgoingStatus(id: Long, status: MessageStatus, providerId: Long? = null) {
         messageDao.updateStatus(id, status, providerId)
+        if (status == MessageStatus.FAILED) mirrorFailedSend(id)
+    }
 
     /** Marks a message delivered with the moment its report arrived. */
     suspend fun updateOutgoingDelivery(id: Long, deliveredAt: Long) =
         messageDao.updateDelivery(id, deliveredAt)
 
     /** Marks a message failed with the platform code behind the failure. */
-    suspend fun updateOutgoingError(id: Long, errorCode: Int) = messageDao.updateError(id, errorCode)
+    suspend fun updateOutgoingError(id: Long, errorCode: Int) {
+        messageDao.updateError(id, errorCode)
+        mirrorFailedSend(id)
+    }
+
+    /**
+     * Mirrors a received message into the provider inbox and links the local
+     * row to it.
+     *
+     * The platform hands the default app the parts over SMS_DELIVER but writes
+     * no inbox row of its own, so every other reader of the system store - the
+     * dialer's contact preview, a backup app, the app that held the role before
+     * this one - only sees a message this app put there. The local row keeps
+     * its address/date/body key (that is what a later import fingerprints
+     * against) and gains the provider id, which turns on the delete and
+     * read-state mirroring above.
+     *
+     * Returns the provider row id, or null when the write was refused.
+     */
+    suspend fun mirrorInboundToProvider(rowId: Long, message: InboundMessage): Long? {
+        val providerId = telephonyWriter.insertInbound(message) ?: return null
+        messageDao.updateProviderId(rowId, providerId)
+        return providerId
+    }
+
+    /**
+     * Mirrors an accepted outgoing message into the provider's sent table.
+     *
+     * The default app is responsible for writing its own sends (the platform
+     * only writes them for apps that are not the default), and the local row
+     * adopts the provider's own dedupe key so the next import recognises what
+     * it just wrote rather than adding a second row for the same send.
+     */
+    suspend fun mirrorSentToProvider(rowId: Long, address: String, body: String, sentAt: Long) {
+        val providerId = telephonyWriter.insertSent(address, body, sentAt) ?: return
+        messageDao.adoptSentProviderRow(
+            id = rowId,
+            providerId = providerId,
+            dedupeKey = ProviderMessageMapper.dedupeKey(providerId),
+        )
+    }
+
+    /**
+     * Flips the provider copy of a send the radio turned down, so the system
+     * app stops showing it as sent. Rows without a provider copy (the write was
+     * refused, or it never ran because the send failed before acceptance) and
+     * MMS rows (written only once MMS write-back exists) have nothing to flip.
+     */
+    private suspend fun mirrorFailedSend(id: Long) {
+        val row = messageDao.getById(id) ?: return
+        val providerId = row.providerId ?: return
+        if (row.isMms) return
+        telephonyWriter.markSentFailed(ProviderRowRef(providerId, isMms = false))
+    }
 
     /**
      * Stores the split an outgoing message was really sent as, so a result that

@@ -46,6 +46,12 @@ object SmsReceiveWorker {
             return
         }
 
+        // Mirror before the spam and mute branches below: the system store keeps
+        // every message this app receives, whichever folder it lands in here.
+        // A refused write (role lost while the broadcast was in flight) leaves
+        // the local copy alone rather than dropping the message.
+        graph.messageRepository.mirrorInboundToProvider(rowId, message)
+
         val conversationId = graph.messageRepository.conversationIdFor(message.address)
         if (conversationId != null) {
             val spam = graph.messageRepository.isSpam(conversationId)

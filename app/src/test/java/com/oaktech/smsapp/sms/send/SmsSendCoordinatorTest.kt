@@ -6,6 +6,7 @@ import com.oaktech.smsapp.data.DataGraph
 import com.oaktech.smsapp.data.MessageRepository
 import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.data.local.SmsDatabase
+import com.oaktech.smsapp.testing.RecordingTelephonyMessageWriter
 import com.oaktech.smsapp.testing.inlineInMemoryDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -29,15 +30,18 @@ class SmsSendCoordinatorTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    private lateinit var writer: RecordingTelephonyMessageWriter
 
     @Before
     fun setUp() {
         database = inlineInMemoryDatabase(context, SmsDatabase::class.java)
+        writer = RecordingTelephonyMessageWriter()
         repository = MessageRepository(
             database.conversationDao(),
             database.messageDao(),
             database.draftDao(),
             database.attachmentDao(),
+            writer,
         )
         DataGraph.overrideForTest(context, repository)
     }
@@ -64,6 +68,7 @@ class SmsSendCoordinatorTest {
             repository.observeConversations().first().isEmpty(),
         )
         assertTrue("nothing was handed to the transport", transport.sentParts.isEmpty())
+        assertTrue("nothing was written to the provider", writer.insertedSent.isEmpty())
     }
 
     @Test
@@ -88,11 +93,18 @@ class SmsSendCoordinatorTest {
         assertEquals(SendOutcome(SendState.SENT, 0, 3, ResultCode.SENT), outcome)
         assertEquals(listOf("a long body", "a long body", "a long body"), transport.sentParts)
 
+        // The platform does not write sent rows for the default app, so this
+        // one has to file its own or the system store never learns of the send.
+        val sent = writer.insertedSent.single()
+        assertEquals("+15551234567", sent.address)
+        assertEquals("a long body", sent.body)
+
         // The row is the only thing that outlives the process, so it has to
         // carry the real part count for a later result to aggregate against.
         val row = repository.observeMessages(1L).first().single()
         assertEquals(MessageStatus.SENDING, row.status)
         assertEquals(3, row.partCount)
+        assertEquals(100L, row.providerId)
     }
 
     /** Splits every body the same way, so the recorded parts are predictable. */

@@ -13,12 +13,15 @@ import com.oaktech.smsapp.data.local.MessageStatus
 object ProviderMessageMapper {
 
     /**
-     * Dedupe key for an imported OUTGOING provider message.
+     * Dedupe key for an OUTGOING provider message.
      *
-     * Outgoing rows are keyed on their provider id because the app itself
-     * records outgoing sends with a random nonce and never writes them to the
-     * provider, so the only source of sent rows here is history from another
-     * app. Incoming rows instead reuse the live path's address/date/body
+     * Outgoing rows are keyed on their provider id because a send is recorded
+     * locally with a random nonce (the same text twice is two messages), which
+     * cannot be reproduced when the same row shows up again on a provider read.
+     * The send path adopts this exact key when it mirrors its own send, so a
+     * later import collides with the row instead of adding it twice; the only
+     * new outgoing rows an import still creates are history from another app.
+     * Incoming rows instead reuse the live path's address/date/body
      * fingerprint so a message this app already received over SMS_DELIVER is
      * never stored twice.
      *

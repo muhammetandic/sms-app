@@ -61,6 +61,21 @@ interface MessageDao {
     )
     suspend fun updateStatus(id: Long, status: MessageStatus, providerId: Long? = null)
 
+    /**
+     * Links a local row to the provider row it was mirrored into, which is what
+     * turns on delete and read-state write-back for it.
+     */
+    @Query("UPDATE messages SET provider_id = :providerId WHERE id = :id")
+    suspend fun updateProviderId(id: Long, providerId: Long)
+
+    /**
+     * Links an outgoing row to its provider copy *and* adopts that copy's
+     * dedupe key, so the next provider import recognises a message this app
+     * wrote instead of filing a second row under the outgoing nonce key.
+     */
+    @Query("UPDATE messages SET provider_id = :providerId, dedupe_key = :dedupeKey WHERE id = :id")
+    suspend fun adoptSentProviderRow(id: Long, providerId: Long, dedupeKey: String)
+
     @Query("UPDATE messages SET status = :status WHERE status = 'SENDING' AND sent_at < :beforeMillis")
     suspend fun resolvePendingOutgoing(status: MessageStatus, beforeMillis: Long)
 

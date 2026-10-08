@@ -6,9 +6,10 @@ import com.oaktech.smsapp.data.local.MessageDirection
 import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.data.local.SmsDatabase
 import com.oaktech.smsapp.data.telephony.ProviderMessage
+import com.oaktech.smsapp.data.telephony.ProviderMessageMapper
 import com.oaktech.smsapp.data.telephony.ProviderRowRef
-import com.oaktech.smsapp.data.telephony.TelephonyMessageWriter
 import com.oaktech.smsapp.sms.receive.InboundMessage
+import com.oaktech.smsapp.testing.RecordingTelephonyMessageWriter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -171,21 +172,85 @@ class WriteBackTest {
         )
     }
 
-    private class RecordingTelephonyMessageWriter : TelephonyMessageWriter {
-        val deleted = mutableListOf<ProviderRowRef>()
-        val markedRead = mutableListOf<ProviderRowRef>()
-        val markedUnread = mutableListOf<ProviderRowRef>()
+    @Test
+    fun `a received message is written to the inbox and linked for later mirrors`() = runTest {
+        val message = InboundMessage("+15551234567", "hello", 1L, parts = 1)
+        val rowId = repository.recordInbound(message, partCount = 1)!!
 
-        override suspend fun delete(rows: List<ProviderRowRef>) {
-            deleted.addAll(rows)
-        }
+        val providerId = repository.mirrorInboundToProvider(rowId, message)
 
-        override suspend fun markRead(rows: List<ProviderRowRef>) {
-            markedRead.addAll(rows)
-        }
+        assertEquals(listOf(message), writer.insertedInbound)
+        assertEquals(100L, providerId)
+        // The link is what the destructive and read-state mirrors need: without
+        // it the provider row would outlive a delete made here.
+        repository.deleteMessage(rowId)
+        assertEquals(listOf(ProviderRowRef(100L, isMms = false)), writer.deleted)
+    }
 
-        override suspend fun markUnread(rows: List<ProviderRowRef>) {
-            markedUnread.addAll(rows)
-        }
+    @Test
+    fun `a refused inbox write leaves the local row unlinked`() = runTest {
+        writer.refuseInserts = true
+        val message = InboundMessage("+15551234567", "hello", 1L, parts = 1)
+        val rowId = repository.recordInbound(message, partCount = 1)!!
+
+        val providerId = repository.mirrorInboundToProvider(rowId, message)
+
+        assertEquals(null, providerId)
+        repository.deleteMessage(rowId)
+        assertEquals(emptyList<ProviderRowRef>(), writer.deleted)
+    }
+
+    @Test
+    fun `an accepted send is written to the sent table under the provider's dedupe key`() = runTest {
+        val rowId = repository.recordOutgoing("+15551234567", "are you there", 1L)
+
+        repository.mirrorSentToProvider(rowId, "+15551234567", "are you there", 1L)
+
+        assertEquals(
+            listOf(RecordingTelephonyMessageWriter.SentRow("+15551234567", "are you there", 1L)),
+            writer.insertedSent,
+        )
+        val row = repository.getMessage(rowId)!!
+        assertEquals(100L, row.providerId)
+        assertEquals(ProviderMessageMapper.dedupeKey(100L), row.dedupeKey)
+
+        // The row now answers to the key an import would derive for the same
+        // provider row, so the next import recognises it instead of filing a
+        // second copy of the same send.
+        val inserted = repository.importFromProvider(
+            listOf(
+                providerMessage(
+                    id = 100L,
+                    body = "are you there",
+                    type = com.oaktech.smsapp.data.telephony.SmsProviderTypes.MESSAGE_TYPE_SENT,
+                ),
+            ),
+        )
+
+        assertEquals(0, inserted)
+        val conversation = repository.observeConversations().first().single()
+        assertEquals(1, repository.observeMessages(conversation.id).first().size)
+    }
+
+    @Test
+    fun `a failed send flips its provider row to failed`() = runTest {
+        val rowId = repository.recordOutgoing("+15551234567", "are you there", 1L)
+        repository.mirrorSentToProvider(rowId, "+15551234567", "are you there", 1L)
+
+        repository.updateOutgoingError(rowId, errorCode = 64)
+
+        assertEquals(listOf(ProviderRowRef(100L, isMms = false)), writer.markedFailed)
+        assertEquals(MessageStatus.FAILED, repository.getMessage(rowId)!!.status)
+    }
+
+    @Test
+    fun `a send refused by the provider has nothing to flip when it fails`() = runTest {
+        writer.refuseInserts = true
+        val rowId = repository.recordOutgoing("+15551234567", "are you there", 1L)
+        repository.mirrorSentToProvider(rowId, "+15551234567", "are you there", 1L)
+
+        repository.updateOutgoingStatus(rowId, MessageStatus.FAILED)
+
+        assertEquals(emptyList<ProviderRowRef>(), writer.markedFailed)
     }
 }

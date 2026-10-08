@@ -6,11 +6,11 @@ import java.security.MessageDigest
  * Identity of an inbound message for deduplication.
  *
  * A default SMS app sees the same message more than once in normal operation:
- * the platform writes it to the Telephony provider and also hands the parts to
- * this app via SMS_DELIVER. Without a stable key the message lands in the
- * thread twice. Provider import uses this same key, so a message lived [sic]
- * through SMS_DELIVER and one imported from the provider collide and one is
- * dropped.
+ * this app writes the message to the Telephony provider as the inbox row every
+ * other reader sees, and it is also handed the parts over SMS_DELIVER. Without
+ * a stable key the message lands in the thread twice. Provider import uses this
+ * same key, so a message that lived through SMS_DELIVER and one read back from
+ * the provider collide and one is dropped.
  */
 data class InboundMessageKey(
     val address: String,

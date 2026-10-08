@@ -102,6 +102,10 @@ class SmsSendCoordinator(
 
         return try {
             transport.sendMultipart(destination, parts, sentIntents, deliveryIntent)
+            // The platform writes sent rows only for apps that are not the
+            // default, so this one has to file its own; the row also adopts the
+            // provider's dedupe key here, before any result can arrive.
+            repository.mirrorSentToProvider(rowId, destination, body, now)
             SendOutcome(SendState.SENT, failedParts = 0, totalParts = parts.size, code = ResultCode.SENT)
         } catch (throwable: Throwable) {
             android.util.Log.e(LogTags.SEND, "Failed to send message", throwable)
