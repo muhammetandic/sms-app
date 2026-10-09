@@ -6,6 +6,7 @@ import com.oaktech.smsapp.data.local.MessageDirection
 import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.data.local.SmsDatabase
 import com.oaktech.smsapp.sms.receive.InboundMessage
+import com.oaktech.smsapp.sms.send.ResultCode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -125,6 +126,53 @@ class MessageRepositoryTest {
             setOf("/tmp/sent.jpg", "/tmp/queued.jpg"),
             repository.referencedAttachmentPaths(),
         )
+    }
+
+    @Test
+    fun `a failed outgoing mms exposes its content for a retry`() = runTest {
+        val part = AttachmentPart(fileName = "a.jpg", contentType = "image/jpeg", filePath = "/tmp/a.jpg", byteSize = 3)
+        val id = repository.recordOutgoingMms(
+            recipients = listOf("+15551234567", "+15557654321"),
+            subject = "hi",
+            body = "pic",
+            sentAt = 1_700_000_000_000L,
+            attachments = listOf(part),
+        )
+        repository.updateOutgoingError(id, ResultCode.MMS_NETWORK_UNAVAILABLE.platformCode)
+
+        val retry = repository.outgoingMmsRetry(id)
+
+        assertEquals(id, retry?.rowId)
+        assertEquals(listOf("+15551234567", "+15557654321"), retry?.recipients)
+        assertEquals("hi", retry?.subject)
+        assertEquals("pic", retry?.body)
+        assertEquals(1_700_000_000_000L, retry?.sentAt)
+        assertEquals(listOf(part), retry?.attachments)
+    }
+
+    @Test
+    fun `an sms or a sent mms is not offered for a background retry`() = runTest {
+        val smsId = repository.recordOutgoing("+15551234567", "hi", 1L)
+        repository.updateOutgoingStatus(smsId, MessageStatus.FAILED)
+        assertNull(repository.outgoingMmsRetry(smsId))
+
+        val mmsId = repository.recordOutgoingMms(listOf("+15551234567"), null, "sent", 1L, emptyList())
+        repository.updateOutgoingStatus(mmsId, MessageStatus.SENT)
+        assertNull(repository.outgoingMmsRetry(mmsId))
+    }
+
+    @Test
+    fun `only a failed mms can be flipped back to sending`() = runTest {
+        val mmsId = repository.recordOutgoingMms(listOf("+15551234567"), null, "x", 1L, emptyList())
+        repository.updateOutgoingError(mmsId, ResultCode.MMS_SEND_FAILED.platformCode)
+
+        assertTrue(repository.markFailedMmsSending(mmsId))
+        assertEquals(MessageStatus.SENDING, repository.getMessage(mmsId)?.status)
+        assertFalse("a second claim must not win", repository.markFailedMmsSending(mmsId))
+
+        val smsId = repository.recordOutgoing("+15551234567", "x", 1L)
+        repository.updateOutgoingStatus(smsId, MessageStatus.FAILED)
+        assertFalse(repository.markFailedMmsSending(smsId))
     }
 
     @Test

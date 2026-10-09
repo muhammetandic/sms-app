@@ -104,6 +104,15 @@ interface MessageDao {
     @Query("UPDATE messages SET status = 'FAILED', error_code = :errorCode WHERE id = :id AND status = 'SENDING'")
     suspend fun failIfSending(id: Long, errorCode: Int)
 
+    /**
+     * Returns a failed outgoing MMS to SENDING for a background retry. Scoped to
+     * FAILED and MMS so an attempt that races a manual resend, a delete, or
+     * another attempt changes nothing; the row count is how the caller learns
+     * whether it actually owns the retry.
+     */
+    @Query("UPDATE messages SET status = 'SENDING', error_code = NULL WHERE id = :id AND status = 'FAILED' AND is_mms = 1")
+    suspend fun markFailedMmsSending(id: Long): Int
+
     /** Notifies the thread that an inbound MMS's media has (not) arrived. */
     @Query("UPDATE messages SET download_state = :state WHERE id = :id")
     suspend fun updateDownloadState(id: Long, state: DownloadState)

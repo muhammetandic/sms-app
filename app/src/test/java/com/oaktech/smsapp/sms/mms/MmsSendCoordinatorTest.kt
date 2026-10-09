@@ -1,6 +1,7 @@
 package com.oaktech.smsapp.sms.mms
 
 import androidx.test.core.app.ApplicationProvider
+import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.data.DataGraph
 import com.oaktech.smsapp.data.MessageRepository
 import com.oaktech.smsapp.data.local.MessageStatus
@@ -165,6 +166,103 @@ class MmsSendCoordinatorTest {
             "no row was persisted for a send the radio would refuse",
             repository.observeMessages(1L).first().isEmpty(),
         )
+    }
+
+    @Test
+    fun `a retryable failure asks the host to schedule a retry`() = runTest {
+        val scheduled = mutableListOf<Long>()
+        val coordinator = MmsSendCoordinator(
+            poster = BrokenPoster(RuntimeException("no route to host")),
+            mmscResolver = FakeApn("http://mmsc.example"),
+            context = context,
+            onRetryableFailure = { scheduled += it },
+        )
+
+        coordinator.send(
+            recipients = listOf("+15550000001"),
+            subject = null,
+            body = "will drop",
+            attachments = emptyList(),
+        )
+
+        assertEquals(1, scheduled.size)
+    }
+
+    @Test
+    fun `a config failure is not scheduled for a background retry`() = runTest {
+        val scheduled = mutableListOf<Long>()
+        val coordinator = MmsSendCoordinator(
+            poster = FakePoster(200),
+            mmscResolver = FakeApn(null),
+            context = context,
+            onRetryableFailure = { scheduled += it },
+        )
+
+        coordinator.send(
+            recipients = listOf("+15550000001"),
+            subject = null,
+            body = "no mmsc",
+            attachments = emptyList(),
+        )
+
+        assertTrue("a missing MMSC will not fix itself on a backoff", scheduled.isEmpty())
+    }
+
+    @Test
+    fun `an unbuildable pdu is not scheduled for a background retry`() = runTest {
+        val scheduled = mutableListOf<Long>()
+        val coordinator = MmsSendCoordinator(
+            poster = FakePoster(200),
+            mmscResolver = FakeApn("http://mmsc.example"),
+            context = context,
+            onRetryableFailure = { scheduled += it },
+        )
+
+        coordinator.send(
+            recipients = listOf("+15550000001"),
+            subject = null,
+            body = "text with a missing photo",
+            attachments = listOf(
+                AttachmentPart("missing.jpg", "image/jpeg", "/does/not/exist.jpg", 10),
+            ),
+        )
+
+        assertTrue("a missing attachment file will not fix itself on a backoff", scheduled.isEmpty())
+    }
+
+    @Test
+    fun `a retry reuses the failed row instead of composing a new one`() = runTest {
+        val failing = MmsSendCoordinator(
+            BrokenPoster(RuntimeException("down")),
+            FakeApn("http://mmsc.example"),
+            context,
+        )
+        failing.send(
+            recipients = listOf("+15550000001"),
+            subject = null,
+            body = "retry me",
+            attachments = emptyList(),
+        )
+        val failed = repository.getMessagesInConversation()
+        assertEquals(MessageStatus.FAILED, failed.status)
+        assertTrue("the worker flips the row back to SENDING", repository.markFailedMmsSending(failed.id))
+
+        val coordinator = MmsSendCoordinator(FakePoster(200), FakeApn("http://mmsc.example"), context)
+        val outcome = coordinator.resend(
+            rowId = failed.id,
+            recipients = listOf("+15550000001"),
+            subject = null,
+            body = "retry me",
+            attachments = emptyList(),
+            sentAt = failed.sentAt,
+        )
+
+        assertEquals(SendState.SENT, outcome.state)
+        val rows = repository.observeMessages(1L).first()
+        assertEquals("a retry corrects the row rather than adding a second", 1, rows.size)
+        assertEquals(failed.id, rows.single().id)
+        assertEquals(MessageStatus.SENT, rows.single().status)
+        assertEquals(1, writer.insertedSentMms.size)
     }
 
     private class FakePoster(private val status: Int) : MmsPoster {

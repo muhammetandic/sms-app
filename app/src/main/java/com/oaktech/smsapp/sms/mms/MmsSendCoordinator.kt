@@ -33,6 +33,13 @@ class MmsSendCoordinator(
      * in `MmsSendGraph` passes the live check.
      */
     private val isRoleHeld: () -> Boolean = { true },
+    /**
+     * Called with the row id after a transaction fails in a way worth retrying,
+     * so the host can schedule a background attempt. Defaults to nothing, and a
+     * retry itself never calls it, so a coordinator built by a test - or the
+     * retry worker - does not recursively enqueue work.
+     */
+    private val onRetryableFailure: (Long) -> Unit = {},
 ) {
 
     private val appContext = context.applicationContext
@@ -63,6 +70,59 @@ class MmsSendCoordinator(
             attachments = attachments,
         )
 
+        return transmit(rowId, members, subject, body, attachments, now, scheduleRetry = true)
+    }
+
+    /**
+     * Retries a failed outgoing MMS in place, reusing its row and stored parts
+     * rather than composing a new message.
+     *
+     * The caller (the retry worker) has already flipped the row back to SENDING;
+     * this runs the same transaction as a first send, so a success marks SENT
+     * and mirrors the provider copy while a failure returns it to FAILED with
+     * this attempt's error. The retry backoff lives in the worker, so no retry
+     * is scheduled from here.
+     */
+    suspend fun resend(
+        rowId: Long,
+        recipients: List<String>,
+        subject: String?,
+        body: String,
+        attachments: List<AttachmentPart>,
+        sentAt: Long,
+    ): SendOutcome {
+        if (!isRoleHeld()) {
+            Log.w(LogTags.SEND, "Rejected MMS retry: the app is not the default SMS app")
+            return SendOutcome(SendState.FAILED, 0, 1, ResultCode.NO_DEFAULT_SMS_APP)
+        }
+        val members = recipients.map { it.trim() }.filter { it.isNotBlank() }
+        if (members.isEmpty()) {
+            return SendOutcome(SendState.FAILED, 0, 1, ResultCode.GENERIC_FAILURE)
+        }
+        return transmit(rowId, members, subject, body, attachments, sentAt, scheduleRetry = false)
+    }
+
+    /**
+     * The MMSC transaction shared by a first send and a retry: build the PDU,
+     * resolve the MMSC, post, and correct the row from the outcome.
+     *
+     * [scheduleRetry] is true only for a first send. A retry already runs inside
+     * the worker's own backoff, so it must not enqueue another job. Only a
+     * transport failure or a non-2xx response schedules a retry: a PDU that
+     * cannot be built or a missing MMSC is a configuration problem a backoff
+     * will not fix.
+     */
+    private suspend fun transmit(
+        rowId: Long,
+        members: List<String>,
+        subject: String?,
+        body: String,
+        attachments: List<AttachmentPart>,
+        sentAt: Long,
+        scheduleRetry: Boolean,
+    ): SendOutcome {
+        val repository = DataGraph.get(appContext).messageRepository
+
         val pdu = buildPdu(members, subject, body, attachments)
         if (pdu == null) {
             repository.updateOutgoingError(rowId, ResultCode.MMS_SEND_FAILED.platformCode)
@@ -90,7 +150,7 @@ class MmsSendCoordinator(
                         address = members.first(),
                         recipients = members,
                         subject = subject,
-                        timestampMillis = now,
+                        timestampMillis = sentAt,
                         parts = MmsPduBuilder.providerParts(
                             body = body,
                             media = attachments.mapNotNull { part ->
@@ -104,13 +164,26 @@ class MmsSendCoordinator(
                 SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
             } else {
                 repository.updateOutgoingError(rowId, ResultCode.MMS_SEND_FAILED.platformCode)
+                if (scheduleRetry) scheduleRetry(rowId)
                 SendOutcome(SendState.FAILED, 0, 1, ResultCode.MMS_SEND_FAILED)
             }
         } catch (throwable: Throwable) {
             Log.e(LogTags.SEND, "MMSC transaction failed", throwable)
             repository.updateOutgoingError(rowId, ResultCode.MMS_NETWORK_UNAVAILABLE.platformCode)
+            if (scheduleRetry) scheduleRetry(rowId)
             SendOutcome(SendState.FAILED, 0, 1, ResultCode.MMS_NETWORK_UNAVAILABLE)
         }
+    }
+
+    /**
+     * Hands a retryable failure to the host so it can schedule a background
+     * attempt. A configuration problem or a lost role is not routed here: it
+     * will not fix itself on the MMSC's schedule, and the row stays failed for a
+     * manual resend either way.
+     */
+    private fun scheduleRetry(rowId: Long) {
+        runCatching { onRetryableFailure(rowId) }
+            .onFailure { Log.w(LogTags.SEND, "Could not schedule an MMS retry", it) }
     }
 
     private suspend fun buildPdu(

@@ -47,6 +47,7 @@ object MmsSendGraph {
             mmscResolver = resolver(context),
             context = context,
             isRoleHeld = { DataGraph.get(context).roleManager.isHeld() },
+            onRetryableFailure = { MmsSendRetry.schedule(context, it) },
         )
 
     fun partSource(context: Context): MmsPartSource {

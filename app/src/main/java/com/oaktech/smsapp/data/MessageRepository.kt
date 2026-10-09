@@ -527,6 +527,47 @@ class MessageRepository(
     /** One message row, for retrying or inspecting a single message. */
     suspend fun getMessage(id: Long): MessageEntity? = messageDao.getById(id)
 
+    /**
+     * The content a background retry of a failed outgoing MMS needs, read back
+     * from the store because the worker may run in a fresh process with no
+     * composer state. Returns null unless the row is still an outgoing, failed
+     * MMS, so an attempt that races a manual resend or a delete is a no-op
+     * rather than a duplicate send.
+     */
+    suspend fun outgoingMmsRetry(messageId: Long): OutgoingMmsRetry? {
+        val message = messageDao.getById(messageId) ?: return null
+        if (message.direction != MessageDirection.OUTGOING || !message.isMms ||
+            message.status != MessageStatus.FAILED
+        ) {
+            return null
+        }
+        val recipients = conversationDao.getById(message.conversationId)
+            ?.displayAddress
+            ?.let(AddressNormalizer::membersOf)
+            ?.filter(String::isNotBlank)
+        if (recipients.isNullOrEmpty()) return null
+        val attachments = attachmentDao.getForMessage(messageId).map {
+            AttachmentPart(
+                fileName = it.fileName,
+                contentType = it.contentType,
+                filePath = it.filePath,
+                byteSize = it.byteSize,
+            )
+        }
+        return OutgoingMmsRetry(
+            rowId = message.id,
+            recipients = recipients,
+            subject = message.subject,
+            body = message.body,
+            sentAt = message.sentAt,
+            attachments = attachments,
+        )
+    }
+
+    /** Puts a failed outgoing MMS back to SENDING; false when it is no longer failed. */
+    suspend fun markFailedMmsSending(messageId: Long): Boolean =
+        messageDao.markFailedMmsSending(messageId) > 0
+
     /** Messages and conversations whose body or address matches, newest first. */
     fun observeMessageSearch(query: String): Flow<List<MessageSearchHit>> =
         messageDao.searchMessages(query)
@@ -721,4 +762,18 @@ data class AttachmentPart(
     val contentType: String,
     val filePath: String?,
     val byteSize: Long,
+)
+
+/**
+ * A failed outgoing MMS reconstructed from the store, for the send-retry worker:
+ * everything the original send carried, so a retry in a new process is the same
+ * message rather than an empty one.
+ */
+data class OutgoingMmsRetry(
+    val rowId: Long,
+    val recipients: List<String>,
+    val subject: String?,
+    val body: String,
+    val sentAt: Long,
+    val attachments: List<AttachmentPart>,
 )
