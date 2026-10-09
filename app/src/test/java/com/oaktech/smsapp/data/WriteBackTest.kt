@@ -7,6 +7,8 @@ import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.data.local.SmsDatabase
 import com.oaktech.smsapp.data.telephony.ProviderMessage
 import com.oaktech.smsapp.data.telephony.ProviderMessageMapper
+import com.oaktech.smsapp.data.telephony.ProviderMms
+import com.oaktech.smsapp.data.telephony.ProviderMmsPart
 import com.oaktech.smsapp.data.telephony.ProviderRowRef
 import com.oaktech.smsapp.sms.receive.InboundMessage
 import com.oaktech.smsapp.testing.RecordingTelephonyMessageWriter
@@ -252,5 +254,119 @@ class WriteBackTest {
         repository.updateOutgoingStatus(rowId, MessageStatus.FAILED)
 
         assertEquals(emptyList<ProviderRowRef>(), writer.markedFailed)
+    }
+
+    @Test
+    fun `a received mms is written to the provider inbox and linked for later mirrors`() = runTest {
+        val rowId = repository.recordInboundMms(
+            address = "+15551234567",
+            body = "look at this",
+            subject = "photos",
+            timestampMillis = 1_000L,
+            transactionId = "txn-1",
+            attachments = emptyList(),
+        )!!
+        val message = ProviderMms(
+            address = "+15551234567",
+            recipients = emptyList(),
+            subject = "photos",
+            timestampMillis = 1_000L,
+            parts = listOf(
+                ProviderMmsPart("application/smil", "smil", null, null, "<smil/>"),
+                ProviderMmsPart("text/plain", "0", null, null, "look at this"),
+                ProviderMmsPart("image/jpeg", "1", "photo.jpg", "/tmp/photo.jpg", null),
+            ),
+            outgoing = false,
+        )
+
+        val providerId = repository.mirrorInboundMmsToProvider(rowId, message)
+
+        assertEquals(listOf(message), writer.insertedInboundMms)
+        assertEquals(100L, providerId)
+        // The link is what turns on delete and read-state write-back for the row.
+        repository.deleteMessage(rowId)
+        assertEquals(listOf(ProviderRowRef(100L, isMms = true)), writer.deleted)
+    }
+
+    @Test
+    fun `a refused mms inbox write leaves the local row unlinked`() = runTest {
+        writer.refuseInserts = true
+        val rowId = repository.recordInboundMms(
+            address = "+15551234567",
+            body = "look at this",
+            subject = null,
+            timestampMillis = 1_000L,
+            transactionId = null,
+            attachments = emptyList(),
+        )!!
+
+        val providerId = repository.mirrorInboundMmsToProvider(
+            rowId,
+            ProviderMms("+15551234567", emptyList(), null, 1_000L, emptyList(), outgoing = false),
+        )
+
+        assertEquals(null, providerId)
+        repository.deleteMessage(rowId)
+        assertEquals(emptyList<ProviderRowRef>(), writer.deleted)
+    }
+
+    @Test
+    fun `an accepted mms send is written to the sent table under the mms dedupe key`() = runTest {
+        val rowId = repository.recordOutgoingMms(
+            recipients = listOf("+15551234567", "+15555555555"),
+            subject = "hi",
+            body = "hello all",
+            sentAt = 2_000L,
+            attachments = emptyList(),
+        )
+        val message = ProviderMms(
+            address = "+15551234567",
+            recipients = listOf("+15551234567", "+15555555555"),
+            subject = "hi",
+            timestampMillis = 2_000L,
+            parts = listOf(ProviderMmsPart("text/plain", "0", null, null, "hello all")),
+            outgoing = true,
+        )
+
+        repository.mirrorSentMmsToProvider(rowId, message)
+
+        assertEquals(listOf(message), writer.insertedSentMms)
+        val row = repository.getMessage(rowId)!!
+        assertEquals(100L, row.providerId)
+        assertEquals(ProviderMessageMapper.dedupeKey(100L, mms = true), row.dedupeKey)
+
+        // Re-importing the provider row the app just wrote adds nothing: the
+        // local row already answers to that provider id.
+        val inserted = repository.importFromProvider(
+            listOf(providerMessage(id = 100L, address = "+15551234567", body = "hello all", mms = true)),
+        )
+        assertEquals(0, inserted)
+    }
+
+    @Test
+    fun `import skips a provider row already linked to a live mms`() = runTest {
+        // An inbound MMS stored live keys on its transaction, its provider-import
+        // key is a different namespace, so only the provider id can stop the
+        // same message being filed twice.
+        val rowId = repository.recordInboundMms(
+            address = "+15551234567",
+            body = "look at this",
+            subject = null,
+            timestampMillis = 1_000L,
+            transactionId = "txn-1",
+            attachments = emptyList(),
+        )!!
+        repository.mirrorInboundMmsToProvider(
+            rowId,
+            ProviderMms("+15551234567", emptyList(), null, 1_000L, emptyList(), outgoing = false),
+        )
+
+        val inserted = repository.importFromProvider(
+            listOf(providerMessage(id = 100L, address = "+15551234567", body = "look at this", mms = true)),
+        )
+
+        assertEquals(0, inserted)
+        val conversation = repository.observeConversations().first().single()
+        assertEquals(1, repository.observeMessages(conversation.id).first().size)
     }
 }

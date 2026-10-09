@@ -6,6 +6,7 @@ import com.oaktech.smsapp.data.MessageRepository
 import com.oaktech.smsapp.data.local.DownloadState
 import com.oaktech.smsapp.data.local.MessageEntity
 import com.oaktech.smsapp.data.local.SmsDatabase
+import com.oaktech.smsapp.testing.RecordingTelephonyMessageWriter
 import com.oaktech.smsapp.testing.inlineInMemoryDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -25,17 +26,20 @@ class MmsDownloaderTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    private lateinit var writer: RecordingTelephonyMessageWriter
 
     private val recipient = "+15550000001"
 
     @Before
     fun setUp() {
         database = inlineInMemoryDatabase(context, SmsDatabase::class.java)
+        writer = RecordingTelephonyMessageWriter()
         repository = MessageRepository(
             database.conversationDao(),
             database.messageDao(),
             database.draftDao(),
             database.attachmentDao(),
+            writer,
         )
         DataGraph.overrideForTest(context, repository)
     }
@@ -76,6 +80,14 @@ class MmsDownloaderTest {
         assertEquals("hi", row.body)
         val stored = repository.observeAttachments(messageId).first { it.size == 1 }
         assertTrue("stored name should keep the part name", stored.single().fileName.endsWith("a.jpg"))
+
+        // The download completed the message, so it goes into the provider now
+        // that it has parts; the media part carries the on-disk path.
+        val mirrored = writer.insertedInboundMms.single()
+        assertEquals(recipient, mirrored.address)
+        assertEquals(100L, repository.getMessage(messageId)!!.providerId)
+        val media = mirrored.parts.single { it.contentType == "image/jpeg" }
+        assertTrue("media part should point at a stored file", media.filePath!!.endsWith("a.jpg"))
     }
 
     @Test

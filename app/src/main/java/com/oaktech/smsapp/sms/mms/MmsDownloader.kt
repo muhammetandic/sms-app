@@ -5,6 +5,8 @@ import android.util.Log
 import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.data.MessageRepository
 import com.oaktech.smsapp.data.local.DownloadState
+import com.oaktech.smsapp.data.telephony.ProviderMedia
+import com.oaktech.smsapp.data.telephony.ProviderMms
 import com.oaktech.smsapp.sms.receive.LogTags
 
 /**
@@ -37,7 +39,7 @@ class MmsDownloader(
         val address = repository.recipientFor(conversationId)?.takeIf { it.isNotBlank() } ?: return false
 
         if (message.downloadState == DownloadState.PENDING && message.contentLocation != null) {
-            return retrieveAndStore(repository, messageId)
+            return retrieveAndStore(repository, messageId, address)
         }
 
         val found = partSource.firstAttachment(address, message.sentAt) ?: return false
@@ -52,12 +54,14 @@ class MmsDownloader(
             ),
         )
         repository.markDownloadState(messageId, DownloadState.RETRIEVED)
+        mirrorRetrieved(repository, messageId, address)
         return true
     }
 
     private suspend fun retrieveAndStore(
         repository: MessageRepository,
         messageId: Long,
+        address: String,
     ): Boolean {
         val message = repository.getMessage(messageId) ?: return false
         val bytes = autoRetriever.retrieve(message.contentLocation ?: return false) ?: return false
@@ -86,13 +90,40 @@ class MmsDownloader(
             repository.updateMessageContent(messageId, inbounds.body, inbounds.subject)
         }
 
-        repository.markDownloadState(
-            messageId,
-            if (storedCount < declared) DownloadState.PENDING else DownloadState.RETRIEVED,
-        )
+        val finalState = if (storedCount < declared) DownloadState.PENDING else DownloadState.RETRIEVED
+        repository.markDownloadState(messageId, finalState)
+        if (finalState == DownloadState.RETRIEVED) {
+            mirrorRetrieved(repository, messageId, address)
+        }
         acknowledger?.notifyResponse(message.transactionId, MmsNotifyStatus.RETRIEVED)
         acknowledger?.acknowledge(pdu.transactionId)
         Log.d(LogTags.RECEIVE, "Retrieved $storedCount/$declared attachment(s) for MMS row $messageId")
         return true
+    }
+
+    /**
+     * Writes a now-complete inbound MMS into the provider, unless it is already
+     * there. A retrieve-conf at arrival is mirrored then and skips this; this is
+     * the path for a PENDING placeholder the user later downloaded, which could
+     * not be mirrored while it had no parts.
+     */
+    private suspend fun mirrorRetrieved(repository: MessageRepository, messageId: Long, address: String) {
+        val message = repository.getMessage(messageId) ?: return
+        if (message.providerId != null) return
+        val media = repository.getAttachments(messageId).mapNotNull { attachment ->
+            val path = attachment.filePath ?: return@mapNotNull null
+            ProviderMedia(attachment.contentType, attachment.fileName, path)
+        }
+        repository.mirrorInboundMmsToProvider(
+            rowId = messageId,
+            message = ProviderMms(
+                address = address,
+                recipients = emptyList(),
+                subject = message.subject,
+                timestampMillis = message.sentAt,
+                parts = MmsPduBuilder.providerParts(body = message.body, media = media),
+                outgoing = false,
+            ),
+        )
     }
 }

@@ -11,6 +11,7 @@ import com.oaktech.smsapp.sms.receive.InboundMessage
 import com.oaktech.smsapp.sms.receive.LogTags
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * One provider row this app wants to mutate.
@@ -62,6 +63,21 @@ interface TelephonyMessageWriter {
     suspend fun insertSent(address: String, body: String, sentAt: Long): Long?
 
     /**
+     * Writes a received MMS into the provider inbox and returns its row id.
+     *
+     * The row, its From address and every part go in together. Same refusal
+     * contract as [insertInbound]: a role loss leaves the local copy as the only
+     * one rather than throwing out of the receive path.
+     */
+    suspend fun insertInboundMms(message: ProviderMms): Long?
+
+    /**
+     * Writes an accepted outgoing MMS into the provider's sent table and
+     * returns its row id. Same refusal contract as [insertSent].
+     */
+    suspend fun insertSentMms(message: ProviderMms): Long?
+
+    /**
      * Flips a row this app already wrote from sent to failed, so the system SMS
      * app does not keep showing a send the radio turned down.
      */
@@ -75,6 +91,8 @@ class NoopTelephonyMessageWriter : TelephonyMessageWriter {
     override suspend fun markUnread(rows: List<ProviderRowRef>) = Unit
     override suspend fun insertInbound(message: InboundMessage): Long? = null
     override suspend fun insertSent(address: String, body: String, sentAt: Long): Long? = null
+    override suspend fun insertInboundMms(message: ProviderMms): Long? = null
+    override suspend fun insertSentMms(message: ProviderMms): Long? = null
     override suspend fun markSentFailed(row: ProviderRowRef) = Unit
 }
 
@@ -87,7 +105,9 @@ class NoopTelephonyMessageWriter : TelephonyMessageWriter {
  */
 class PlatformTelephonyMessageWriter(context: Context) : TelephonyMessageWriter {
 
-    private val resolver: ContentResolver = context.applicationContext.contentResolver
+    private val appContext = context.applicationContext
+
+    private val resolver: ContentResolver = appContext.contentResolver
 
     override suspend fun delete(rows: List<ProviderRowRef>) = withContext(Dispatchers.IO) {
         for (row in rows) {
@@ -146,6 +166,103 @@ class PlatformTelephonyMessageWriter(context: Context) : TelephonyMessageWriter 
             insertInto(Telephony.Sms.Sent.CONTENT_URI, values)
         }
 
+    override suspend fun insertInboundMms(message: ProviderMms): Long? =
+        insertMms(message, Telephony.Mms.Inbox.CONTENT_URI)
+
+    override suspend fun insertSentMms(message: ProviderMms): Long? =
+        insertMms(message, Telephony.Mms.Sent.CONTENT_URI)
+
+    /**
+     * Writes one MMS: the `pdu` row, its address rows and every part.
+     *
+     * A part's bytes cannot be handed over in the insert (the provider rejects
+     * `_data` from a foreign package), so each part is inserted first and then
+     * its bytes are streamed through the URI the provider returns. The whole
+     * write is guarded by one runCatching so a refusal anywhere stops it with a
+     * log line instead of escaping the receive path.
+     */
+    private suspend fun insertMms(message: ProviderMms, boxUri: Uri): Long? = withContext(Dispatchers.IO) {
+        runCatching {
+            val threadId = Telephony.Threads.getOrCreateThreadId(appContext, message.address)
+            val values = ContentValues().apply {
+                put(Telephony.Mms.THREAD_ID, threadId)
+                // The provider's MMS times are seconds (its SMS times are
+                // milliseconds), so the same instant has to survive a re-read.
+                put(Telephony.Mms.DATE, message.timestampMillis / 1000L)
+                put(Telephony.Mms.DATE_SENT, message.timestampMillis / 1000L)
+                message.subject?.let { put(Telephony.Mms.SUBJECT, it) }
+                put(Telephony.Mms.CONTENT_TYPE, contentTypeFor(message.parts))
+                put(Telephony.Mms.MESSAGE_SIZE, message.parts.sumOf(::partSize))
+                // Inbound starts unread, but the app has already decided
+                // whether to alert, so SEEN is set either way; outbound is read
+                // because the user is looking at it here.
+                put(Telephony.Mms.READ, if (message.outgoing) 1 else 0)
+                put(Telephony.Mms.SEEN, 1)
+            }
+            val rowUri = resolver.insert(boxUri, values) ?: error("provider refused the MMS row")
+            val mmsId = ContentUris.parseId(rowUri)
+
+            if (message.outgoing) {
+                message.recipients.forEach { insertMmsAddress(mmsId, it, ADDRESS_TYPE_TO) }
+            } else {
+                insertMmsAddress(mmsId, message.address, ADDRESS_TYPE_FROM)
+            }
+            message.parts.forEach { insertMmsPart(mmsId, it) }
+            mmsId
+        }
+            .onFailure { Log.w(LogTags.STORE, "MMS provider write refused", it) }
+            .getOrNull()
+    }
+
+    private fun insertMmsAddress(mmsId: Long, address: String, type: Int) {
+        val uri = Uri.withAppendedPath(Telephony.Mms.CONTENT_URI, "$mmsId/addr")
+        val values = ContentValues().apply {
+            put(Telephony.Mms.Addr.ADDRESS, address)
+            put(Telephony.Mms.Addr.TYPE, type)
+            put(Telephony.Mms.Addr.CHARSET, ADDRESS_CHARSET_UTF8)
+        }
+        runCatching { resolver.insert(uri, values) }
+            .onFailure { Log.w(LogTags.STORE, "MMS address write refused for $mmsId", it) }
+    }
+
+    private fun insertMmsPart(mmsId: Long, part: ProviderMmsPart) {
+        val uri = Uri.withAppendedPath(Telephony.Mms.CONTENT_URI, "$mmsId/part")
+        val values = ContentValues().apply {
+            put(Telephony.Mms.Part.CONTENT_TYPE, part.contentType)
+            part.contentId?.let { put(Telephony.Mms.Part.CONTENT_ID, it) }
+            part.fileName?.let { put(Telephony.Mms.Part.FILENAME, it) }
+            part.text?.let { put(Telephony.Mms.Part.TEXT, it) }
+        }
+        val partUri = runCatching { resolver.insert(uri, values) }
+            .onFailure { Log.w(LogTags.STORE, "MMS part write refused for $mmsId", it) }
+            .getOrNull()
+            ?: return
+
+        // Inline parts are already complete. A media part is not: the provider
+        // created the file for it, so the bytes have to be written through the
+        // minted URI or the part stays empty.
+        val path = part.filePath ?: return
+        val file = File(path)
+        if (!file.isFile) {
+            Log.w(LogTags.STORE, "MMS part file is missing: $path")
+            return
+        }
+        runCatching {
+            resolver.openOutputStream(partUri)?.use { out ->
+                file.inputStream().use { it.copyTo(out) }
+            }
+        }.onFailure { Log.w(LogTags.STORE, "MMS part bytes write refused for $mmsId", it) }
+    }
+
+    private fun contentTypeFor(parts: List<ProviderMmsPart>): String =
+        if (parts.any { it.filePath != null }) MULTIPART_MIME else TEXT_PLAIN_MIME
+
+    private fun partSize(part: ProviderMmsPart): Long {
+        part.text?.let { return it.toByteArray(Charsets.UTF_8).size.toLong() }
+        val path = part.filePath ?: return 0L
+        return File(path).length()
+    }
+
     override suspend fun markSentFailed(row: ProviderRowRef) {
         withContext(Dispatchers.IO) {
             val values = ContentValues().apply {
@@ -174,4 +291,17 @@ class PlatformTelephonyMessageWriter(context: Context) : TelephonyMessageWriter 
         if (row.isMms) Telephony.Mms.CONTENT_URI else Telephony.Sms.CONTENT_URI,
         row.providerId.toString(),
     )
+
+    private companion object {
+        // PduHeaders address types. FROM is what the read side looks for when it
+        // turns a provider row back into a conversation address.
+        const val ADDRESS_TYPE_FROM = 0x89
+        const val ADDRESS_TYPE_TO = 0x81
+
+        // WSP character set 106 (UTF-8), the value AOSP writes for addresses.
+        const val ADDRESS_CHARSET_UTF8 = 106
+
+        const val MULTIPART_MIME = "application/vnd.wap.multipart.related"
+        const val TEXT_PLAIN_MIME = "text/plain"
+    }
 }

@@ -19,6 +19,47 @@ data class ProviderMessage(
     val mms: Boolean = false,
 )
 
+/**
+ * One part of an MMS this app is writing into the provider.
+ *
+ * Text parts (the body, the SMIL layout) are stored inline through [text]; media
+ * parts are written as bytes through the part URI the provider mints, so they
+ * carry [filePath] instead. The provider only accepts a `_data` column from its
+ * own package, which is why a path is never handed to it directly.
+ */
+data class ProviderMmsPart(
+    val contentType: String,
+    val contentId: String?,
+    val fileName: String?,
+    val filePath: String?,
+    val text: String?,
+)
+
+/** One media file on disk, ready to become a provider part. */
+data class ProviderMedia(
+    val contentType: String,
+    val fileName: String,
+    val filePath: String,
+)
+
+/**
+ * An MMS this app is writing into the provider.
+ *
+ * [address] is the conversation's address: the sender for an inbound message,
+ * the first recipient of an outbound group. [recipients] is the full To list
+ * for an outbound send and empty for an inbound one. The instant is in
+ * milliseconds like everywhere in this app; the writer converts it to the
+ * provider's seconds.
+ */
+data class ProviderMms(
+    val address: String,
+    val recipients: List<String>,
+    val subject: String?,
+    val timestampMillis: Long,
+    val parts: List<ProviderMmsPart>,
+    val outgoing: Boolean,
+)
+
 data class ProviderThread(
     val threadId: Long,
     val snippet: String,

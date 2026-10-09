@@ -239,6 +239,27 @@ class MmsPduBuilderParserTest {
         assertFalse(pdu?.parts?.any { it.contentId?.startsWith("cid:") == true } ?: true)
     }
 
+    @Test
+    fun `provider parts carry the same cids as the wire body`() {
+        val image = MmsPduBuilder.Media("image/jpeg", "photo.jpg", byteArrayOf(0xFF.toByte(), 0xD8.toByte()))
+        val clip = MmsPduBuilder.Media("video/mp4", "clip.mp4", byteArrayOf(0x00, 0x01))
+        val media = listOf(image, clip)
+        val wire = MmsPduParser.parse(build(media = media))!!
+        val parts = MmsPduBuilder.providerParts(
+            body = "Look at this",
+            media = media.map {
+                com.oaktech.smsapp.data.telephony.ProviderMedia(it.contentType, it.fileName, "/tmp/${it.fileName}")
+            },
+        )
+
+        // The provider row must use the same part order and cids the wire body
+        // (and therefore its SMIL) uses, or the system app lays it out wrong.
+        assertEquals(wire.parts.map { it.contentId }, parts.map { it.contentId })
+        assertEquals(listOf("smil", "0"), parts.take(2).map { it.contentId })
+        assertEquals("Look at this", parts[1].text)
+        assertEquals("/tmp/photo.jpg", parts[2].filePath)
+    }
+
     private fun textOf(pdu: MmsPdu): String {
         val part = pdu.parts.firstOrNull { it.contentType == "text/plain" }
             ?: return ""

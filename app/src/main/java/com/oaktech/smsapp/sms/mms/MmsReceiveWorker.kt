@@ -5,6 +5,8 @@ import android.util.Log
 import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.data.DataGraph
 import com.oaktech.smsapp.data.local.DownloadState
+import com.oaktech.smsapp.data.telephony.ProviderMedia
+import com.oaktech.smsapp.data.telephony.ProviderMms
 import com.oaktech.smsapp.notify.IncomingMessageNotifier
 import com.oaktech.smsapp.sms.block.BlockedSenders
 import com.oaktech.smsapp.sms.receive.LogTags
@@ -182,6 +184,27 @@ object MmsReceiveWorker {
         if (rowId == null) {
             Log.d(LogTags.RECEIVE, "Skipped duplicate MMS from ${inbounds.address}")
             return
+        }
+
+        // Mirror only a message whose content actually landed. A PENDING
+        // placeholder has the sender but no parts, and a partless MMS is a
+        // broken bubble in every other reader of the system store; a later
+        // manual download mirrors it once the bytes are in.
+        if (downloadState != DownloadState.PENDING) {
+            graph.messageRepository.mirrorInboundMmsToProvider(
+                rowId = rowId,
+                message = ProviderMms(
+                    address = inbounds.address,
+                    recipients = emptyList(),
+                    subject = inbounds.subject,
+                    timestampMillis = inbounds.timestampMillis,
+                    parts = MmsPduBuilder.providerParts(
+                        body = inbounds.body,
+                        media = stored.map { ProviderMedia(it.contentType, it.file.name, it.file.absolutePath) },
+                    ),
+                    outgoing = false,
+                ),
+            )
         }
 
         val conversationId = graph.messageRepository.conversationIdFor(inbounds.address)

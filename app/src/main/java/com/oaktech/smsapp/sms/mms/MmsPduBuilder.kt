@@ -1,5 +1,7 @@
 package com.oaktech.smsapp.sms.mms
 
+import com.oaktech.smsapp.data.telephony.ProviderMedia
+import com.oaktech.smsapp.data.telephony.ProviderMmsPart
 import java.io.ByteArrayOutputStream
 
 /**
@@ -201,6 +203,29 @@ object MmsPduBuilder {
         writeContentLength(data.size)
         writeBytes(header)
         writeBytes(data)
+    }
+
+    /**
+     * The provider layout for an MMS: the same parts, in the cid order the
+     * wire PDU's SMIL refers to, so a row this app writes renders in the system
+     * app the same as one the platform stored itself.
+     */
+    internal fun providerParts(body: String, media: List<ProviderMedia>): List<ProviderMmsPart> = buildList {
+        if (media.isNotEmpty()) {
+            add(ProviderMmsPart(SMIL_MIME, SMIL_CID, null, null, smil(media.size)))
+        }
+        add(ProviderMmsPart("text/plain", TEXT_CID, null, null, body))
+        media.forEachIndexed { index, item ->
+            add(
+                ProviderMmsPart(
+                    contentType = item.contentType,
+                    contentId = "$TEXT_CID_INDEX_BASE${index + 1}",
+                    fileName = item.fileName,
+                    filePath = item.filePath,
+                    text = null,
+                ),
+            )
+        }
     }
 
     /** SMIL that shows the text and then every media part as a slide. */

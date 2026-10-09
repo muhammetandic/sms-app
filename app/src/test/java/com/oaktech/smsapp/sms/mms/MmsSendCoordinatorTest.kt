@@ -8,6 +8,7 @@ import com.oaktech.smsapp.data.local.SmsDatabase
 import com.oaktech.smsapp.sms.send.ResultCode
 import com.oaktech.smsapp.sms.send.SendOutcome
 import com.oaktech.smsapp.sms.send.SendState
+import com.oaktech.smsapp.testing.RecordingTelephonyMessageWriter
 import com.oaktech.smsapp.testing.inlineInMemoryDatabase
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -27,15 +28,18 @@ class MmsSendCoordinatorTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    private lateinit var writer: RecordingTelephonyMessageWriter
 
     @Before
     fun setUp() {
         database = inlineInMemoryDatabase(context, SmsDatabase::class.java)
+        writer = RecordingTelephonyMessageWriter()
         repository = MessageRepository(
             database.conversationDao(),
             database.messageDao(),
             database.draftDao(),
             database.attachmentDao(),
+            writer,
         )
         DataGraph.overrideForTest(context, repository)
     }
@@ -62,6 +66,12 @@ class MmsSendCoordinatorTest {
         assertTrue("the PDU carried the body", poster.lastPdu()!!.isNotEmpty())
         val row = repository.getMessagesInConversation()
         assertEquals(MessageStatus.SENT, row.status)
+        // The accepted send is written into the provider's sent table, and the
+        // local row adopts the provider key so a later import does not double it.
+        val mirrored = writer.insertedSentMms.single()
+        assertEquals(listOf("+15550000001", "+15550000002"), mirrored.recipients)
+        assertEquals("group hello", mirrored.parts.first { it.contentType == "text/plain" }.text)
+        assertEquals(100L, row.providerId)
     }
 
     @Test

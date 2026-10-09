@@ -5,6 +5,8 @@ import android.util.Log
 import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.data.DataGraph
 import com.oaktech.smsapp.data.local.MessageStatus
+import com.oaktech.smsapp.data.telephony.ProviderMedia
+import com.oaktech.smsapp.data.telephony.ProviderMms
 import com.oaktech.smsapp.sms.receive.LogTags
 import com.oaktech.smsapp.sms.send.ResultCode
 import com.oaktech.smsapp.sms.send.SendOutcome
@@ -78,6 +80,27 @@ class MmsSendCoordinator(
             val status = poster.post(mmsc, pdu)
             if (poster.isSuccess(status)) {
                 repository.updateOutgoingStatus(rowId, MessageStatus.SENT)
+                // The platform does not write the default app's sends, so the
+                // accepted message goes into the provider's sent table itself;
+                // the local row adopts the provider's key so a later import
+                // does not add a second copy.
+                repository.mirrorSentMmsToProvider(
+                    rowId = rowId,
+                    message = ProviderMms(
+                        address = members.first(),
+                        recipients = members,
+                        subject = subject,
+                        timestampMillis = now,
+                        parts = MmsPduBuilder.providerParts(
+                            body = body,
+                            media = attachments.mapNotNull { part ->
+                                val path = part.filePath ?: return@mapNotNull null
+                                ProviderMedia(part.contentType, part.fileName, path)
+                            },
+                        ),
+                        outgoing = true,
+                    ),
+                )
                 SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
             } else {
                 repository.updateOutgoingError(rowId, ResultCode.MMS_SEND_FAILED.platformCode)

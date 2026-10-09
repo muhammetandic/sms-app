@@ -38,6 +38,15 @@ interface MessageDao {
     @Query("SELECT COUNT(*) FROM messages WHERE dedupe_key = :dedupeKey")
     suspend fun countByDedupeKey(dedupeKey: String): Int
 
+    /**
+     * The local row already linked to a provider row of this kind, if any.
+     *
+     * Kind-scoped because the SMS and MMS provider tables number their rows
+     * independently, so id 5 exists in both and only `is_mms` tells them apart.
+     */
+    @Query("SELECT id FROM messages WHERE provider_id = :providerId AND is_mms = :isMms LIMIT 1")
+    suspend fun idForProvider(providerId: Long, isMms: Boolean): Long?
+
     /** How many messages a conversation still holds, to spot the last one going. */
     @Query("SELECT COUNT(*) FROM messages WHERE conversation_id = :conversationId")
     suspend fun countInConversation(conversationId: Long): Int

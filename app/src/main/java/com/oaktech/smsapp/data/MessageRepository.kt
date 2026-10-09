@@ -17,6 +17,7 @@ import com.oaktech.smsapp.data.local.MessageSearchHit
 import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.data.telephony.ProviderMessage
 import com.oaktech.smsapp.data.telephony.ProviderMessageMapper
+import com.oaktech.smsapp.data.telephony.ProviderMms
 import com.oaktech.smsapp.data.telephony.ProviderRowRef
 import com.oaktech.smsapp.data.telephony.TelephonyMessageWriter
 import com.oaktech.smsapp.data.telephony.NoopTelephonyMessageWriter
@@ -226,6 +227,11 @@ class MessageRepository(
 
         for (message in messages) {
             val mapped = ProviderMessageMapper.map(message) ?: continue
+            // A row the live path already mirrored carries its provider id, so
+            // importing it again would file a second copy: an inbound MMS's live
+            // key and its provider-import key are deliberately different, and
+            // nothing else would collide them.
+            if (messageDao.idForProvider(mapped.providerId, mapped.mms) != null) continue
             val conversationId = findOrCreateConversation(mapped.address, mapped.sentAt)
             // Incoming provider rows share the live path's address/date/body key,
             // so a message this app already received through SMS_DELIVER is
@@ -462,10 +468,45 @@ class MessageRepository(
     }
 
     /**
+     * Mirrors a received MMS into the provider inbox and links the local row to
+     * it.
+     *
+     * The SMS mirror's contract one level up: the `pdu` row, its From address
+     * and every part go in, and media bytes are streamed through the part URI
+     * the provider mints. The local row keeps its `mms:` key (what a later
+     * import fingerprints an already-stored message against) and gains the
+     * provider id, which turns on the delete and read-state mirroring.
+     *
+     * Returns the provider row id, or null when the write was refused.
+     */
+    suspend fun mirrorInboundMmsToProvider(rowId: Long, message: ProviderMms): Long? {
+        val providerId = telephonyWriter.insertInboundMms(message) ?: return null
+        messageDao.updateProviderId(rowId, providerId)
+        return providerId
+    }
+
+    /**
+     * Mirrors an accepted outbound MMS into the provider's sent table.
+     *
+     * Like the SMS send mirror, the local row adopts the provider's namespaced
+     * dedupe key so the next import recognises the send instead of adding a
+     * second row.
+     */
+    suspend fun mirrorSentMmsToProvider(rowId: Long, message: ProviderMms) {
+        val providerId = telephonyWriter.insertSentMms(message) ?: return
+        messageDao.adoptSentProviderRow(
+            id = rowId,
+            providerId = providerId,
+            dedupeKey = ProviderMessageMapper.dedupeKey(providerId, mms = true),
+        )
+    }
+
+    /**
      * Flips the provider copy of a send the radio turned down, so the system
      * app stops showing it as sent. Rows without a provider copy (the write was
      * refused, or it never ran because the send failed before acceptance) and
-     * MMS rows (written only once MMS write-back exists) have nothing to flip.
+     * MMS rows (only written to the provider once the MMSC accepts, so a failed
+     * MMS never got one) have nothing to flip.
      */
     private suspend fun mirrorFailedSend(id: Long) {
         val row = messageDao.getById(id) ?: return
