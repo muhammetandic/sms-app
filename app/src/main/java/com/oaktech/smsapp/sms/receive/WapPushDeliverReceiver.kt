@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
 import android.util.Log
-import com.oaktech.smsapp.sms.mms.MmsReceiveWorker
+import com.oaktech.smsapp.sms.mms.IncomingMmsWorker
 
 /**
  * Receives MMS push notifications.
@@ -28,11 +28,13 @@ class WapPushDeliverReceiver : BroadcastReceiver() {
         val pdu = intent.getByteArrayExtra(EXTRA_DATA) ?: return
         if (pdu.isEmpty()) return
 
-        // The parsing and database writes happen off the main thread inside the
-        // broadcast's own expiry budget, finishing the pending result when done.
-        val pendingResult = goAsync()
-        MmsReceiveWorker.enqueue(context, pdu) {
-            pendingResult.finish()
+        // The fetch and its acknowledgements are handed to WorkManager before
+        // this returns: they are network transactions that can outlast the
+        // broadcast's budget several times over. Nothing is lost if the queue
+        // is full or the process dies — the carrier retransmits an
+        // unacknowledged notification.
+        if (!IncomingMmsWorker.enqueue(context, pdu)) {
+            Log.w(LogTags.RECEIVE, "Could not queue incoming MMS; the carrier will repush it")
         }
     }
 

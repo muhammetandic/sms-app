@@ -8,18 +8,15 @@ import com.oaktech.smsapp.data.local.DownloadState
 import com.oaktech.smsapp.notify.IncomingMessageNotifier
 import com.oaktech.smsapp.sms.block.BlockedSenders
 import com.oaktech.smsapp.sms.receive.LogTags
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * Off-main-thread entry point for an incoming MMS PDU.
+ * The persistence and MMSC side of an incoming MMS PDU.
  *
- * Follows [com.oaktech.smsapp.sms.receive.SmsReceiveWorker]: the receiver keeps
- * the broadcast pending for the duration of the work through [onComplete], and
- * the persistence runs in one process-wide scope.
+ * Runs under [IncomingMmsWorker], not inside the broadcast: the fetch and the
+ * acknowledgements are network transactions and the caller is the receiver's
+ * queue, which owns the retry policy. A throw therefore propagates instead of
+ * being logged and swallowed, so WorkManager can schedule another attempt.
  *
  * The two PDU types arrive differently:
  *  - a retrieve-conf carries the message body and media. Parts that made it to
@@ -33,22 +30,7 @@ import java.io.File
  */
 object MmsReceiveWorker {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    fun enqueue(context: Context, pduBytes: ByteArray, onComplete: () -> Unit) {
-        val appContext = context.applicationContext
-        scope.launch {
-            try {
-                handle(appContext, pduBytes)
-            } catch (throwable: Throwable) {
-                Log.e(LogTags.RECEIVE, "Failed to handle incoming MMS", throwable)
-            } finally {
-                onComplete()
-            }
-        }
-    }
-
-    private suspend fun handle(context: Context, pduBytes: ByteArray) {
+    suspend fun handle(context: Context, pduBytes: ByteArray) {
         val pdu = MmsPduParser.parse(pduBytes)
         if (pdu == null) {
             Log.w(LogTags.RECEIVE, "Discarded undecodable MMS PDU (${pduBytes.size} byte(s))")
@@ -66,6 +48,19 @@ object MmsReceiveWorker {
 
     private suspend fun handleNotification(context: Context, pdu: MmsPdu) {
         val acknowledger = MmsAcknowledger(poster(context), PlatformApnResolver(context))
+
+        // Decided before the fetch: pulling the body opens a billed data
+        // session, and a blocked sender's message is never alerted on anyway.
+        // The placeholder is still stored below, so the message stays visible
+        // (with its download affordance) in the folder it lands in.
+        val from = pdu.from
+        if (from != null && isFiltered(context, from)) {
+            Log.d(LogTags.RECEIVE, "Stored MMS notification from $from without fetching its body")
+            storeNotification(context, pdu)
+            acknowledger.notifyResponse(pdu.transactionId, MmsNotifyStatus.DEFERRED)
+            return
+        }
+
         val autoRetriever = MmsAutoRetriever(retriever(context), PlatformApnResolver(context))
         val retrieveBytes = autoRetriever.retrieve(pdu)
         val retrievePdu = retrieveBytes?.let { MmsPduParser.parse(it) }
@@ -82,6 +77,23 @@ object MmsReceiveWorker {
             // download, and the carrier stops repushing the same notification.
             acknowledger.notifyResponse(pdu.transactionId, MmsNotifyStatus.DEFERRED)
         }
+    }
+
+    /**
+     * A blocked sender, or a conversation the user has already flagged as spam:
+     * the message is stored silently and its body is never fetched.
+     *
+     * The same rule [storeInbound] re-applies on the way in, once the
+     * conversation exists; this is its cheap pre-fetch copy, so a blocked
+     * notification never costs a data session. The two must agree, which is why
+     * both go through [BlockedSenders], whose matching is the conversation-key
+     * identity rule.
+     */
+    internal suspend fun isFiltered(context: Context, address: String): Boolean {
+        val graph = DataGraph.get(context)
+        val conversationId = graph.messageRepository.conversationIdFor(address)
+        if (conversationId != null && graph.messageRepository.isSpam(conversationId)) return true
+        return BlockedSenders(context).isBlocked(address)
     }
 
     private suspend fun handleRetrieveConf(
