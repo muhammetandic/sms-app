@@ -16,6 +16,13 @@ interface AttachmentDao {
     @Query("SELECT * FROM attachments WHERE message_id = :messageId ORDER BY part_index ASC")
     suspend fun getForMessage(messageId: Long): List<AttachmentEntity>
 
+    /**
+     * Every on-disk attachment path the store still references, for the orphan
+     * sweep. Placeholders that never downloaded have a null path and are skipped.
+     */
+    @Query("SELECT file_path FROM attachments WHERE file_path IS NOT NULL")
+    suspend fun allFilePaths(): List<String>
+
     /** All attachments of a conversation, for the thread's bubbles. */
     @Query(
         "SELECT a.* FROM attachments a JOIN messages m ON m.id = a.message_id " +

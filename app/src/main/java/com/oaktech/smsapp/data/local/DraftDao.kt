@@ -29,6 +29,13 @@ interface DraftDao {
     fun observePending(conversationId: Long): Flow<List<String?>>
 
     /**
+     * Every non-empty attachment queue in the store, for the orphan sweep: a
+     * queued file is still referenced even though it has no message row yet.
+     */
+    @Query("SELECT pending_attachments FROM drafts WHERE pending_attachments IS NOT NULL")
+    suspend fun allPendingAttachments(): List<String>
+
+    /**
      * Rewrites the draft text. Returns the number of rows touched so the
      * repository can insert the row only when this is the first write.
      */

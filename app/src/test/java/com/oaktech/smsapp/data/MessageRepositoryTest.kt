@@ -100,6 +100,34 @@ class MessageRepositoryTest {
     }
 
     @Test
+    fun `referenced attachment paths cover both message attachments and unsent queues`() = runTest {
+        val messageId = repository.recordOutgoingMms(
+            recipients = listOf("+15551234567"),
+            subject = null,
+            body = "with photo",
+            sentAt = 1_700_000_000_000L,
+            attachments = emptyList(),
+        )
+        repository.addAttachment(
+            messageId,
+            AttachmentPart(fileName = "sent.jpg", contentType = "image/jpeg", filePath = "/tmp/sent.jpg", byteSize = 5),
+        )
+        repository.recordInbound(inbound(), partCount = 1)
+        val conversationId = requireNotNull(repository.conversationIdFor(inbound().address))
+        repository.savePendingAttachments(
+            conversationId,
+            listOf(
+                AttachmentPart(fileName = "queued.jpg", contentType = "image/jpeg", filePath = "/tmp/queued.jpg", byteSize = 5),
+            ),
+        )
+
+        assertEquals(
+            setOf("/tmp/sent.jpg", "/tmp/queued.jpg"),
+            repository.referencedAttachmentPaths(),
+        )
+    }
+
+    @Test
     fun `duplicate inbound message is ignored`() = runTest {
         repository.recordInbound(inbound(), partCount = 1)
         val second = repository.recordInbound(inbound(), partCount = 1)

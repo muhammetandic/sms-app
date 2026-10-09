@@ -560,6 +560,20 @@ class MessageRepository(
     suspend fun getAttachments(messageId: Long): List<AttachmentEntity> =
         attachmentDao.getForMessage(messageId)
 
+    /**
+     * Every attachment file the store still points at, from both the message
+     * attachments and the composers' unsent queues. The orphan sweep deletes
+     * only files outside this set, so a queued-but-unsent pick (which has no
+     * message row) survives.
+     */
+    suspend fun referencedAttachmentPaths(): Set<String> {
+        val fromMessages = attachmentDao.allFilePaths()
+        val fromQueues = draftDao.allPendingAttachments()
+            .flatMap { PendingAttachmentsCodec.decode(it) }
+            .mapNotNull { it.filePath }
+        return (fromMessages + fromQueues).toSet()
+    }
+
     /** Marks a placeholder attachment downloaded to disk. */
     suspend fun markAttachmentRetrieved(id: Long, filePath: String, byteSize: Long) =
         attachmentDao.markRetrieved(id, filePath, byteSize)
