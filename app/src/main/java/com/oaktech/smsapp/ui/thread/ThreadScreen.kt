@@ -16,10 +16,12 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -62,6 +64,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -87,6 +91,8 @@ import com.oaktech.smsapp.sms.send.SmsSegments
 import com.oaktech.smsapp.ui.TimeFormat
 import com.oaktech.smsapp.ui.components.LinkifiedText
 import com.oaktech.smsapp.ui.components.ReadOnlyBanner
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 class ThreadTestTags {
     companion object {
@@ -97,7 +103,56 @@ class ThreadTestTags {
         const val DOWNLOAD_BUTTON = "thread_download_button"
         const val SEGMENT_COUNTER = "thread_segment_counter"
         const val SUBJECT_FIELD = "thread_subject_field"
+        const val IMAGE_ATTACHMENT = "thread_image_attachment"
     }
+}
+
+/**
+ * An image attachment is the message, so it is shown inline instead of as a
+ * filename row. Anything else, and any image whose bytes are not on disk yet
+ * (a RETRIEVABLE part has no path until the user downloads it), stays a row.
+ */
+@Composable
+private fun AttachmentPreview(attachment: AttachmentUi) {
+    val filePath = attachment.filePath
+    val isImage = attachment.contentType?.startsWith("image/") == true
+    if (filePath != null && isImage) {
+        AttachmentImage(attachment = attachment, filePath = filePath)
+    } else {
+        AttachmentRow(attachment = attachment)
+    }
+}
+
+/**
+ * The tap target matches the row's: share the original file. A file that fails
+ * to decode (corrupt, or swept from disk) falls back to the filename row rather
+ * than leaving an empty gap in the bubble.
+ */
+@Composable
+private fun AttachmentImage(attachment: AttachmentUi, filePath: String) {
+    val context = LocalContext.current
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
+    var failed by remember(filePath) { mutableStateOf(false) }
+    if (failed) {
+        AttachmentRow(attachment = attachment)
+        return
+    }
+
+    AsyncImage(
+        model = ImageRequest.Builder(context).data(File(filePath)).crossfade(true).build(),
+        contentDescription = attachment.fileName,
+        contentScale = ContentScale.Fit,
+        onError = { failed = true },
+        modifier = Modifier
+            .padding(bottom = 6.dp)
+            .widthIn(max = 240.dp)
+            .heightIn(max = 240.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .testTag(ThreadTestTags.IMAGE_ATTACHMENT)
+            .clickable {
+                launcher.launch(shareAttachmentIntent(context, filePath, attachment.contentType, attachment.fileName))
+            },
+    )
 }
 
 /** Sends an attachment through the system share sheet via the FileProvider. */
@@ -545,7 +600,7 @@ private fun MessageBubbleRow(
             Column(modifier = Modifier.padding(12.dp)) {
                 if (bubble.attachments.isNotEmpty()) {
                     bubble.attachments.forEach { attachment ->
-                        AttachmentRow(attachment = attachment)
+                        AttachmentPreview(attachment = attachment)
                     }
                 }
                 // A carrier-supplied MMS subject sits above the body like an

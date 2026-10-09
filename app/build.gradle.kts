@@ -110,6 +110,8 @@ dependencies {
 
     implementation(libs.androidx.work.runtime.ktx)
 
+    implementation(libs.coil.compose)
+
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation(libs.junit)
