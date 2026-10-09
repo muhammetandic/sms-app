@@ -2,7 +2,7 @@ package com.oaktech.smsapp.sms.send
 
 import android.content.Context
 import com.oaktech.smsapp.data.DataGraph
-import com.oaktech.smsapp.sms.mms.HttpMmsPoster
+import com.oaktech.smsapp.sms.mms.PlatformMmsPoster
 import com.oaktech.smsapp.sms.mms.HttpMmsRetriever
 import com.oaktech.smsapp.sms.mms.MmsAcknowledger
 import com.oaktech.smsapp.sms.mms.MmsAutoRetriever
@@ -76,5 +76,5 @@ object MmsSendGraph {
     /** Fresh per call: the opener holds no state between transactions. */
     private fun opener(context: Context) = PlatformMmsConnectionOpener(context)
 
-    private fun poster(context: Context) = HttpMmsPoster(opener(context))
+    private fun poster(context: Context) = PlatformMmsPoster(context)
 }

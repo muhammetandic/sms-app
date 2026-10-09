@@ -34,6 +34,7 @@
     <string name="thread_status_delivered">Delivered</string>
     <string name="thread_status_failed">Failed to send</string>
     <string name="thread_send_failed">Message could not be sent</string>
+    <string name="thread_mms_network_failed">MMS network unavailable. Check mobile data and carrier service.</string>
     <string name="thread_download_failed">Attachment could not be downloaded</string>
     <string name="thread_attach">Add attachment</string>
     <string name="thread_remove_attachment">Remove attachment</string>

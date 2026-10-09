@@ -32,6 +32,7 @@
     <string name="thread_status_delivered">Teslim edildi</string>
     <string name="thread_status_failed">Gönderilemedi</string>
     <string name="thread_send_failed">Mesaj gönderilemedi</string>
+    <string name="thread_mms_network_failed">MMS ağı kullanılamıyor. Mobil veriyi ve operatör hizmetini kontrol edin.</string>
     <string name="thread_download_failed">Ek indirilemedi</string>
     <string name="thread_attach">Ek ekle</string>
     <string name="thread_remove_attachment">Eki kaldır</string>

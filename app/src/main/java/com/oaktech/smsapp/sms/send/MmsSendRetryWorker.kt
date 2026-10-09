@@ -29,7 +29,8 @@ class MmsSendRetryWorker(
             MmsSendRetry.RetryResult.ABANDON,
             -> Result.success()
 
-            MmsSendRetry.RetryResult.RETRY -> Result.retry()
+            MmsSendRetry.RetryResult.RETRY ->
+                if (coordinator.supportsAutomaticRetry) Result.retry() else Result.failure()
         }
     }
 }

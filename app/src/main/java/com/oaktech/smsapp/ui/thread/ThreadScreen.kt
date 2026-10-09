@@ -227,6 +227,7 @@ fun ThreadRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val sendFailedMessage = stringResource(R.string.thread_send_failed)
+    val mmsNetworkFailedMessage = stringResource(R.string.thread_mms_network_failed)
     val downloadFailedMessage = stringResource(R.string.thread_download_failed)
 
     // The role can be revoked from system settings while this screen sits in
@@ -265,6 +266,7 @@ fun ThreadRoute(
             snackbarHostState.showSnackbar(
                 when (failure) {
                     ThreadFailure.SEND -> sendFailedMessage
+                    ThreadFailure.MMS_NETWORK -> mmsNetworkFailedMessage
                     ThreadFailure.DOWNLOAD -> downloadFailedMessage
                 },
             )

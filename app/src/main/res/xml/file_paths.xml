@@ -3,4 +3,7 @@
     <files-path
         name="mms_parts"
         path="mms/" />
+    <cache-path
+        name="mms_send"
+        path="mms-send/" />
 </paths>

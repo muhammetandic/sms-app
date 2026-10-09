@@ -11,6 +11,7 @@ import com.oaktech.smsapp.data.local.DownloadState
 import com.oaktech.smsapp.data.local.MessageDirection
 import com.oaktech.smsapp.data.local.MessageEntity
 import com.oaktech.smsapp.data.local.MessageStatus
+import com.oaktech.smsapp.sms.send.ResultCode
 import com.oaktech.smsapp.sms.send.SendOutcome
 import com.oaktech.smsapp.sms.send.SendState
 import com.oaktech.smsapp.ui.TimeFormat
@@ -37,7 +38,7 @@ data class ThreadUiState(
  * sentence so the wording stays in the (translatable) resources owned by the
  * composable, and the two causes can read differently.
  */
-enum class ThreadFailure { SEND, DOWNLOAD }
+enum class ThreadFailure { SEND, MMS_NETWORK, DOWNLOAD }
 
 data class MessageBubble(
     val id: Long,
@@ -167,7 +168,11 @@ class ThreadViewModel(
                 val attachments = pendingAttachments.value
                 val outcome = send(recipient, subject.trim().ifBlank { null }, trimmed, attachments)
                 if (outcome.state == SendState.FAILED) {
-                    lastFailure.value = ThreadFailure.SEND
+                    lastFailure.value = if (outcome.code == ResultCode.MMS_NETWORK_UNAVAILABLE) {
+                        ThreadFailure.MMS_NETWORK
+                    } else {
+                        ThreadFailure.SEND
+                    }
                 } else if (attachments.isNotEmpty()) {
                     // Sent and persisted: the composer queue has served its
                     // purpose. A failure keeps the queue so the user can retry

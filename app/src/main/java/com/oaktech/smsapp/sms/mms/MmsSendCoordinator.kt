@@ -2,6 +2,8 @@ package com.oaktech.smsapp.sms.mms
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.data.DataGraph
 import com.oaktech.smsapp.data.local.MessageStatus
@@ -42,6 +44,9 @@ class MmsSendCoordinator(
     private val onRetryableFailure: (Long) -> Unit = {},
 ) {
 
+    val supportsAutomaticRetry: Boolean
+        get() = poster.supportsAutomaticRetry
+
     private val appContext = context.applicationContext
 
     suspend fun send(
@@ -62,13 +67,18 @@ class MmsSendCoordinator(
 
         val repository = DataGraph.get(appContext).messageRepository
         val now = System.currentTimeMillis()
-        val rowId = repository.recordOutgoingMms(
-            recipients = members,
-            subject = subject,
-            body = body,
-            sentAt = now,
-            attachments = attachments,
-        )
+        val rowId = runCatching {
+            repository.recordOutgoingMms(
+                recipients = members,
+                subject = subject,
+                body = body,
+                sentAt = now,
+                attachments = attachments,
+            )
+        }.getOrElse { throwable ->
+            Log.e(LogTags.SEND, "Could not persist outgoing MMS", throwable)
+            return SendOutcome(SendState.FAILED, 0, 1, ResultCode.MMS_SEND_FAILED)
+        }
 
         return transmit(rowId, members, subject, body, attachments, now, scheduleRetry = true)
     }
@@ -129,15 +139,29 @@ class MmsSendCoordinator(
             return SendOutcome(SendState.FAILED, 0, 1, ResultCode.MMS_SEND_FAILED)
         }
 
-        val mmsc = mmscResolver.mmscUrl()
-        if (mmsc.isNullOrBlank()) {
+        val mmsc = if (poster.requiresMmscUrl) {
+            runCatching { mmscResolver.mmscUrl() }.getOrElse { throwable ->
+                Log.e(LogTags.SEND, "Could not resolve MMSC", throwable)
+                repository.updateOutgoingError(rowId, ResultCode.MMS_CONFIG_UNAVAILABLE.platformCode)
+                return SendOutcome(SendState.FAILED, 0, 1, ResultCode.MMS_CONFIG_UNAVAILABLE)
+            }
+        } else {
+            null
+        }
+        if (poster.requiresMmscUrl && mmsc.isNullOrBlank()) {
             Log.w(LogTags.SEND, "No MMSC configured; cannot send MMS")
             repository.updateOutgoingError(rowId, ResultCode.MMS_CONFIG_UNAVAILABLE.platformCode)
             return SendOutcome(SendState.FAILED, 0, 1, ResultCode.MMS_CONFIG_UNAVAILABLE)
         }
 
         return try {
-            val status = poster.post(mmsc, pdu)
+            // SmsManager's MMS callback can take tens of seconds while the
+            // carrier provisions its bearer. Keep that wait away from Compose's
+            // main dispatcher so the composer remains responsive and survives
+            // a slow or unavailable network.
+            val status = withContext(Dispatchers.IO) {
+                poster.post(mmsc.orEmpty(), pdu)
+            }
             if (poster.isSuccess(status)) {
                 repository.updateOutgoingStatus(rowId, MessageStatus.SENT)
                 // The platform does not write the default app's sends, so the
@@ -163,14 +187,15 @@ class MmsSendCoordinator(
                 )
                 SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
             } else {
-                repository.updateOutgoingError(rowId, ResultCode.MMS_SEND_FAILED.platformCode)
-                if (scheduleRetry) scheduleRetry(rowId)
-                SendOutcome(SendState.FAILED, 0, 1, ResultCode.MMS_SEND_FAILED)
+                val failure = poster.failureCode(status)
+                repository.updateOutgoingError(rowId, failure.platformCode)
+                if (scheduleRetry && poster.supportsAutomaticRetry) scheduleRetry(rowId)
+                SendOutcome(SendState.FAILED, 0, 1, failure)
             }
         } catch (throwable: Throwable) {
             Log.e(LogTags.SEND, "MMSC transaction failed", throwable)
             repository.updateOutgoingError(rowId, ResultCode.MMS_NETWORK_UNAVAILABLE.platformCode)
-            if (scheduleRetry) scheduleRetry(rowId)
+            if (scheduleRetry && poster.supportsAutomaticRetry) scheduleRetry(rowId)
             SendOutcome(SendState.FAILED, 0, 1, ResultCode.MMS_NETWORK_UNAVAILABLE)
         }
     }
