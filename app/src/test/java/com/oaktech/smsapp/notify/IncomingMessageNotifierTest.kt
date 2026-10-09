@@ -203,4 +203,58 @@ class IncomingMessageNotifierTest {
         val content = shadowOf(posted().contentIntent).savedIntent!!
         assertEquals(3L, content.getLongExtra("com.oaktech.smsapp.extra.CONVERSATION_ID", -1L))
     }
+
+    /**
+     * The caller resolves the sender's display name; the notification has to
+     * show the name the user knows rather than the raw number.
+     */
+    @Test
+    fun `title shows the resolved contact name`() {
+        IncomingMessageNotifier(context).notify(
+            message,
+            messageId = 7L,
+            conversationId = 3L,
+            displayName = "Alice Example",
+        )
+
+        assertEquals("Alice Example", posted().extras.getString(Notification.EXTRA_TITLE))
+    }
+
+    /**
+     * No contact (or a role loss that took READ_CONTACTS with it) must not leave
+     * a blank title, so the number is the fallback.
+     */
+    @Test
+    fun `title falls back to the number without a contact`() {
+        IncomingMessageNotifier(context).notify(message, messageId = 7L, conversationId = 3L)
+
+        assertEquals("+15551234567", posted().extras.getString(Notification.EXTRA_TITLE))
+    }
+
+    @Test
+    fun `blank display name falls back to the number`() {
+        IncomingMessageNotifier(context).notify(
+            message,
+            messageId = 7L,
+            conversationId = 3L,
+            displayName = "   ",
+        )
+
+        assertEquals("+15551234567", posted().extras.getString(Notification.EXTRA_TITLE))
+    }
+
+    @Test
+    fun `mms title shows the resolved contact name`() {
+        IncomingMessageNotifier(context).notifyMms(
+            address = "+15551234567",
+            body = "",
+            subject = null,
+            messageId = 7L,
+            conversationId = 3L,
+            attachmentCount = 1,
+            displayName = "Alice Example",
+        )
+
+        assertEquals("Alice Example", posted().extras.getString(Notification.EXTRA_TITLE))
+    }
 }

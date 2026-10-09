@@ -2,6 +2,7 @@ package com.oaktech.smsapp.sms.mms
 
 import android.content.Context
 import android.util.Log
+import com.oaktech.smsapp.contacts.ContactNameResolver
 import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.data.DataGraph
 import com.oaktech.smsapp.data.local.DownloadState
@@ -241,6 +242,10 @@ object MmsReceiveWorker {
             messageId = rowId,
             conversationId = conversationId,
             attachmentCount = stored.size,
+            // A group thread's address is a joined list, which the contacts
+            // lookup cannot match; the resolver returns null and the joined
+            // numbers stand in, which is the honest label for a group anyway.
+            displayName = ContactNameResolver(context).displayName(inbounds.address),
         )
         Log.d(
             LogTags.RECEIVE,

@@ -2,6 +2,7 @@ package com.oaktech.smsapp.sms.receive
 
 import android.content.Context
 import android.util.Log
+import com.oaktech.smsapp.contacts.ContactNameResolver
 import com.oaktech.smsapp.data.DataGraph
 import com.oaktech.smsapp.notify.IncomingMessageNotifier
 import com.oaktech.smsapp.sms.block.BlockedSenders
@@ -82,7 +83,14 @@ object SmsReceiveWorker {
             }
         }
 
-        IncomingMessageNotifier(context).notify(message, rowId, conversationId)
+        IncomingMessageNotifier(context).notify(
+            message = message,
+            messageId = rowId,
+            conversationId = conversationId,
+            // Contact lookup needs the contacts permission, which a role loss
+            // revokes; the resolver returns null then and the number stands in.
+            displayName = ContactNameResolver(context).displayName(message.address),
+        )
         Log.d(
             LogTags.RECEIVE,
             "Stored inbound message from ${message.address} (${message.parts} part(s), row $rowId)",

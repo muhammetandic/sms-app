@@ -41,7 +41,12 @@ class IncomingMessageNotifier(context: Context) {
      * false positive here.
      */
     @SuppressLint("NotificationPermission")
-    fun notify(message: InboundMessage, messageId: Long, conversationId: Long?) =
+    fun notify(
+        message: InboundMessage,
+        messageId: Long,
+        conversationId: Long?,
+        displayName: String? = null,
+    ) =
         postNotification(
             address = message.address,
             body = message.body,
@@ -49,6 +54,7 @@ class IncomingMessageNotifier(context: Context) {
             conversationId = conversationId,
             attachmentCount = 0,
             subject = null,
+            displayName = displayName,
         )
 
     /**
@@ -65,6 +71,7 @@ class IncomingMessageNotifier(context: Context) {
         messageId: Long,
         conversationId: Long?,
         attachmentCount: Int,
+        displayName: String? = null,
     ) = postNotification(
         address = address,
         body = body,
@@ -72,6 +79,7 @@ class IncomingMessageNotifier(context: Context) {
         conversationId = conversationId,
         attachmentCount = attachmentCount,
         subject = subject,
+        displayName = displayName,
     )
 
     private fun postNotification(
@@ -81,6 +89,7 @@ class IncomingMessageNotifier(context: Context) {
         conversationId: Long?,
         attachmentCount: Int,
         subject: String?,
+        displayName: String?,
     ) {
         // Guarded inline rather than behind the NotificationChannels helper so
         // the check is visible here. The SDK_INT term is required in practice:
@@ -98,7 +107,10 @@ class IncomingMessageNotifier(context: Context) {
         NotificationChannels.ensure(appContext)
         val manager = appContext.getSystemService(NotificationManager::class.java) ?: return
 
-        val title = address
+        // The caller resolves the sender against the address book before calling
+        // (it already runs off the main thread); a missing contact and a blank
+        // name both fall back to the number rather than an empty title.
+        val title = displayName?.takeIf { it.isNotBlank() } ?: address
         val text = bodyText(body, subject, attachmentCount)
         val conversation = conversationId ?: -1L
 
