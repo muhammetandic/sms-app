@@ -164,7 +164,7 @@ class ThreadViewModelTest {
 
         model.onDraftSubmitted("will fail")
         val failed = model.uiState.first { it.lastFailure != null }
-        assertEquals("Message failed to send", failed.lastFailure)
+        assertEquals(ThreadFailure.SEND, failed.lastFailure)
 
         model.dismissFailure()
         assertNull(model.uiState.first { it.lastFailure == null }.lastFailure)

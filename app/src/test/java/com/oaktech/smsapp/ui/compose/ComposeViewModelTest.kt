@@ -4,6 +4,7 @@ import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.sms.send.ResultCode
 import com.oaktech.smsapp.sms.send.SendOutcome
 import com.oaktech.smsapp.sms.send.SendState
+import com.oaktech.smsapp.sms.send.SendValidator
 import com.oaktech.smsapp.testing.MainDispatcherRule
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -41,7 +42,10 @@ class ComposeViewModelTest {
     fun `editing the recipient clears a previous error`() = runTest(mainDispatcherRule.testDispatcher) {
         val model = viewModel(recipient = "12", draft = "hi")
         model.onSend()
-        assertTrue(model.uiState.first { it.error != null }.error!!.isNotEmpty())
+        assertEquals(
+            ComposeError.Invalid(SendValidator.Reason.UNPARSEABLE_RECIPIENT),
+            model.uiState.first { it.error != null }.error,
+        )
 
         model.onRecipientChanged("+15551234567")
 
@@ -61,7 +65,10 @@ class ComposeViewModelTest {
 
             val state = model.uiState.first { it.error != null }
             assertEquals(0, sendCount)
-            assertTrue(state.error!!.contains("parse", ignoreCase = true))
+            assertEquals(
+                ComposeError.Invalid(SendValidator.Reason.UNPARSEABLE_RECIPIENT),
+                state.error,
+            )
         }
 
     @Test
@@ -75,7 +82,10 @@ class ComposeViewModelTest {
         model.onSend()
 
         assertEquals(0, sendCount)
-        assertTrue(model.uiState.first { it.error != null }.error!!.isNotEmpty())
+        assertEquals(
+            ComposeError.Invalid(SendValidator.Reason.EMPTY_BODY),
+            model.uiState.first { it.error != null }.error,
+        )
     }
 
     @Test
@@ -97,7 +107,7 @@ class ComposeViewModelTest {
 
         val state = model.uiState.first { it.error != null }
         assertFalse(state.isFinished)
-        assertEquals("Message could not be sent", state.error)
+        assertEquals(ComposeError.SendFailed, state.error)
     }
 
     @Test

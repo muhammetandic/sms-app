@@ -34,6 +34,7 @@
     <string name="thread_status_delivered">Delivered</string>
     <string name="thread_status_failed">Failed to send</string>
     <string name="thread_send_failed">Message could not be sent</string>
+    <string name="thread_download_failed">Attachment could not be downloaded</string>
     <string name="thread_attach">Add attachment</string>
     <string name="thread_remove_attachment">Remove attachment</string>
     <!-- SMS segment counter: units used in the current part / its capacity. -->
@@ -68,6 +69,11 @@
     <string name="compose_recipient_label">Recipient phone number</string>
     <string name="compose_recipient_hint">To</string>
     <string name="compose_send">Send</string>
+    <string name="compose_error_no_recipient">No recipient</string>
+    <string name="compose_error_bad_recipient">Recipient cannot be parsed as a phone number</string>
+    <string name="compose_error_empty_body">Message body is empty</string>
+    <!-- %1$d is the character limit from SendValidator.MAX_BODY_LENGTH. -->
+    <string name="compose_error_body_too_long">Message body exceeds %1$d characters</string>
 
     <string name="notification_channel_name">Incoming messages</string>
     <string name="notification_channel_description">Alerts when a new text message arrives</string>

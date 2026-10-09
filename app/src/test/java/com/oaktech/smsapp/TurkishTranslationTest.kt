@@ -3,13 +3,16 @@ package com.oaktech.smsapp
 import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import java.io.File
+import java.util.Locale
+import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import java.util.Locale
+import org.w3c.dom.Element
 
 /**
  * The Turkish translation is present and actually selected.
@@ -226,5 +229,64 @@ class TurkishTranslationTest {
             english.getString(R.string.conversations_title),
             inTurkish().getString(R.string.conversations_title),
         )
+    }
+
+    @Test
+    fun `compose error strings are translated`() {
+        val tr = inTurkish()
+
+        assertEquals("Ek indirilemedi", tr.getString(R.string.thread_download_failed))
+        assertEquals("Alıcı yok", tr.getString(R.string.compose_error_no_recipient))
+        assertEquals(
+            "Alıcı telefon numarası olarak çözümlenemiyor",
+            tr.getString(R.string.compose_error_bad_recipient),
+        )
+        assertEquals("Mesaj metni boş", tr.getString(R.string.compose_error_empty_body))
+        assertEquals(
+            "Mesaj metni 10000 karakteri aşıyor",
+            tr.getString(R.string.compose_error_body_too_long, 10000),
+        )
+    }
+
+    /**
+     * The per-string assertions above only cover the strings someone remembered
+     * to check. This guards the whole file: a name added to `values` and never
+     * translated (which silently falls back to English) or left behind in
+     * `values-tr` after a rename fails here.
+     */
+    @Test
+    fun `every translatable string has a turkish translation`() {
+        val default = translatableNames(resourceFile("src/main/res/values/strings.xml"))
+        val turkish = translatableNames(resourceFile("src/main/res/values-tr/strings.xml"))
+
+        assertEquals(
+            "values-tr drifted; missing: ${default - turkish}, extra: ${turkish - default}",
+            default,
+            turkish,
+        )
+    }
+
+    /**
+     * Locates a source resource file. Gradle runs a module's tests from the
+     * module directory, but the fallback keeps this working if the working
+     * directory is ever the repository root instead.
+     */
+    private fun resourceFile(relative: String): File =
+        listOf(File(relative), File("app/$relative"))
+            .firstOrNull(File::exists)
+            ?: error("Could not locate $relative from ${File(".").canonicalPath}")
+
+    /** The `name` of every `<string>`/`<plurals>` not marked `translatable="false"`. */
+    private fun translatableNames(file: File): Set<String> {
+        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(file)
+        val elements = document.getElementsByTagName("*")
+        val names = mutableSetOf<String>()
+        for (index in 0 until elements.length) {
+            val element = elements.item(index) as? Element ?: continue
+            if (element.tagName != "string" && element.tagName != "plurals") continue
+            if (element.getAttribute("translatable") == "false") continue
+            names += element.getAttribute("name")
+        }
+        return names
     }
 }

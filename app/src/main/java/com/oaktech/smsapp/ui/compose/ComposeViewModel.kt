@@ -19,8 +19,21 @@ data class ComposeUiState(
     val attachments: List<AttachmentPart> = emptyList(),
     val isSending: Boolean = false,
     val isFinished: Boolean = false,
-    val error: String? = null,
+    val error: ComposeError? = null,
 )
+
+/**
+ * What the compose screen is reporting to the user. Modelled as a value so the
+ * (translatable) wording lives in resources owned by the composable rather than
+ * being baked into the ViewModel as an English sentence.
+ */
+sealed interface ComposeError {
+    /** The message was validated but the send itself failed. */
+    data object SendFailed : ComposeError
+
+    /** The recipient or body was rejected by [SendValidator]. */
+    data class Invalid(val reason: SendValidator.Reason) : ComposeError
+}
 
 /**
  * Backs the compose screen reached from an `sms:` or `smsto:` intent.
@@ -76,7 +89,7 @@ class ComposeViewModel(
 
         val validation = SendValidator.validate(recipient, body, hasAttachments = attachments.isNotEmpty())
         if (validation is SendValidator.Result.Invalid) {
-            mutableState.update { it.copy(error = validation.detail) }
+            mutableState.update { it.copy(error = ComposeError.Invalid(validation.reason)) }
             return
         }
 
@@ -85,7 +98,7 @@ class ComposeViewModel(
             try {
                 val outcome = send(recipient, body, attachments)
                 if (outcome.state == SendState.FAILED) {
-                    mutableState.update { it.copy(error = "Message could not be sent") }
+                    mutableState.update { it.copy(error = ComposeError.SendFailed) }
                 } else {
                     // Returning to the caller is the expected end state for a
                     // SENDTO request; leaving the screen up looks like a hang.

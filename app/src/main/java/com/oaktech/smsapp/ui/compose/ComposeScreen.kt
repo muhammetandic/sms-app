@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.oaktech.smsapp.R
+import com.oaktech.smsapp.sms.send.SendValidator
 import com.oaktech.smsapp.ui.components.ReadOnlyBanner
 import com.oaktech.smsapp.ui.thread.AttachmentChip
 import com.oaktech.smsapp.ui.thread.ThreadTestTags
@@ -64,9 +65,10 @@ fun ComposeRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    val errorText = state.error?.let { composeErrorText(it) }
     LaunchedEffect(state.error) {
-        state.error?.let {
-            snackbarHostState.showSnackbar(it)
+        if (errorText != null) {
+            snackbarHostState.showSnackbar(errorText)
             viewModel.dismissError()
         }
     }
@@ -219,5 +221,21 @@ fun ComposeScreen(
                 }
             }
         }
+    }
+}
+/**
+ * The (translatable) wording for a compose error, chosen here rather than in
+ * the ViewModel so the state stays free of English text.
+ */
+@Composable
+private fun composeErrorText(error: ComposeError): String = when (error) {
+    ComposeError.SendFailed -> stringResource(R.string.thread_send_failed)
+    is ComposeError.Invalid -> when (error.reason) {
+        SendValidator.Reason.EMPTY_RECIPIENT -> stringResource(R.string.compose_error_no_recipient)
+        SendValidator.Reason.UNPARSEABLE_RECIPIENT ->
+            stringResource(R.string.compose_error_bad_recipient)
+        SendValidator.Reason.EMPTY_BODY -> stringResource(R.string.compose_error_empty_body)
+        SendValidator.Reason.BODY_TOO_LONG ->
+            stringResource(R.string.compose_error_body_too_long, SendValidator.MAX_BODY_LENGTH)
     }
 }

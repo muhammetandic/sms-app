@@ -172,6 +172,7 @@ fun ThreadRoute(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val sendFailedMessage = stringResource(R.string.thread_send_failed)
+    val downloadFailedMessage = stringResource(R.string.thread_download_failed)
 
     // The role can be revoked from system settings while this screen sits in
     // the back stack, and both the read-only banner and the composer's enabled
@@ -205,8 +206,13 @@ fun ThreadRoute(
     }
 
     LaunchedEffect(state.lastFailure) {
-        state.lastFailure?.let {
-            snackbarHostState.showSnackbar(sendFailedMessage)
+        state.lastFailure?.let { failure ->
+            snackbarHostState.showSnackbar(
+                when (failure) {
+                    ThreadFailure.SEND -> sendFailedMessage
+                    ThreadFailure.DOWNLOAD -> downloadFailedMessage
+                },
+            )
             viewModel.dismissFailure()
         }
     }

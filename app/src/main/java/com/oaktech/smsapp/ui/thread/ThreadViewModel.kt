@@ -26,11 +26,18 @@ data class ThreadUiState(
     val messages: List<MessageBubble> = emptyList(),
     val isReadOnly: Boolean = true,
     val isSending: Boolean = false,
-    val lastFailure: String? = null,
+    val lastFailure: ThreadFailure? = null,
     val canSend: Boolean = false,
     val pendingAttachments: List<AttachmentPart> = emptyList(),
     val isMuted: Boolean = false,
 )
+
+/**
+ * The transient failure a thread can surface. Kept as a value rather than a
+ * sentence so the wording stays in the (translatable) resources owned by the
+ * composable, and the two causes can read differently.
+ */
+enum class ThreadFailure { SEND, DOWNLOAD }
 
 data class MessageBubble(
     val id: Long,
@@ -69,7 +76,7 @@ class ThreadViewModel(
 
     private val roleHeld = MutableStateFlow(isSmsRoleHeld())
     private val sending = MutableStateFlow(false)
-    private val lastFailure = MutableStateFlow<String?>(null)
+    private val lastFailure = MutableStateFlow<ThreadFailure?>(null)
     private val pendingAttachments = MutableStateFlow<List<AttachmentPart>>(emptyList())
     private val muted = MutableStateFlow(false)
 
@@ -160,7 +167,7 @@ class ThreadViewModel(
                 val attachments = pendingAttachments.value
                 val outcome = send(recipient, subject.trim().ifBlank { null }, trimmed, attachments)
                 if (outcome.state == SendState.FAILED) {
-                    lastFailure.value = "Message failed to send"
+                    lastFailure.value = ThreadFailure.SEND
                 } else if (attachments.isNotEmpty()) {
                     // Sent and persisted: the composer queue has served its
                     // purpose. A failure keeps the queue so the user can retry
@@ -200,7 +207,7 @@ class ThreadViewModel(
             sending.value = true
             try {
                 if (!download(messageId)) {
-                    lastFailure.value = "Attachment could not be downloaded"
+                    lastFailure.value = ThreadFailure.DOWNLOAD
                 }
             } finally {
                 sending.value = false
@@ -246,7 +253,7 @@ class ThreadViewModel(
                     attachments,
                 )
                 if (outcome.state == SendState.FAILED) {
-                    lastFailure.value = "Message failed to send"
+                    lastFailure.value = ThreadFailure.SEND
                 }
             } finally {
                 sending.value = false

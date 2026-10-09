@@ -32,6 +32,7 @@
     <string name="thread_status_delivered">Teslim edildi</string>
     <string name="thread_status_failed">Gönderilemedi</string>
     <string name="thread_send_failed">Mesaj gönderilemedi</string>
+    <string name="thread_download_failed">Ek indirilemedi</string>
     <string name="thread_attach">Ek ekle</string>
     <string name="thread_remove_attachment">Eki kaldır</string>
     <!-- SMS segment counter: units used in the current part / its capacity. -->
@@ -65,6 +66,11 @@
     <string name="compose_recipient_label">Alıcının telefon numarası</string>
     <string name="compose_recipient_hint">Kime</string>
     <string name="compose_send">Gönder</string>
+    <string name="compose_error_no_recipient">Alıcı yok</string>
+    <string name="compose_error_bad_recipient">Alıcı telefon numarası olarak çözümlenemiyor</string>
+    <string name="compose_error_empty_body">Mesaj metni boş</string>
+    <!-- %1$d is the character limit from SendValidator.MAX_BODY_LENGTH. -->
+    <string name="compose_error_body_too_long">Mesaj metni %1$d karakteri aşıyor</string>
 
     <string name="notification_channel_name">Gelen mesajlar</string>
     <string name="notification_channel_description">Yeni bir metin mesajı geldiğinde uyarır</string>
