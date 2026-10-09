@@ -65,7 +65,7 @@ class ThreadViewModelTest {
     private fun viewModel(
         conversationId: Long,
         roleHeld: () -> Boolean = { true },
-        send: suspend (String, String, List<AttachmentPart>) -> SendOutcome = { _, _, _ ->
+        send: suspend (String, String?, String, List<AttachmentPart>) -> SendOutcome = { _, _, _, _ ->
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
         },
         download: suspend (Long) -> Boolean = { false },
@@ -125,7 +125,7 @@ class ThreadViewModelTest {
         val conversationId = givenInbound("hi", 1_000L)
         var sentBody: String? = null
         var sentTo: String? = null
-        val model = viewModel(conversationId, send = { to, body, _ ->
+        val model = viewModel(conversationId, send = { to, _, body, _ ->
             sentTo = to
             sentBody = body
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
@@ -142,7 +142,7 @@ class ThreadViewModelTest {
     fun `a blank draft is never sent`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
         var sendCount = 0
-        val model = viewModel(conversationId, send = { _, _, _ ->
+        val model = viewModel(conversationId, send = { _, _, _, _ ->
             sendCount += 1
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
         })
@@ -157,7 +157,7 @@ class ThreadViewModelTest {
     @Test
     fun `a failed send surfaces an error and can be dismissed`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId, send = { _, _, _ ->
+        val model = viewModel(conversationId, send = { _, _, _, _ ->
             SendOutcome(SendState.FAILED, 1, 1, ResultCode.RADIO_OFF)
         })
         model.awaitLoaded()
@@ -193,7 +193,7 @@ class ThreadViewModelTest {
         val model = viewModel(
             conversationId,
             threadRecipient = "",
-            send = { _, _, _ ->
+            send = { _, _, _, _ ->
                 sendCount += 1
                 SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
             },
@@ -210,7 +210,7 @@ class ThreadViewModelTest {
     @Test
     fun `a sent message appears in the thread with its status`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId, send = { address, body, _ ->
+        val model = viewModel(conversationId, send = { address, _, body, _ ->
             val id = repository.recordOutgoing(address, body, 5_000L)
             repository.updateOutgoingStatus(id, MessageStatus.SENT)
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
@@ -228,7 +228,7 @@ class ThreadViewModelTest {
     @Test
     fun `a failed message keeps its failed status in the thread`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId, send = { address, body, _ ->
+        val model = viewModel(conversationId, send = { address, _, body, _ ->
             val id = repository.recordOutgoing(address, body, 5_000L)
             repository.updateOutgoingStatus(id, MessageStatus.FAILED)
             SendOutcome(SendState.FAILED, 1, 1, ResultCode.RADIO_OFF)
@@ -313,7 +313,7 @@ class ThreadViewModelTest {
     fun `resending a failed message composes the text again`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
         var sentBody: String? = null
-        val model = viewModel(conversationId, send = { address, body, _ ->
+        val model = viewModel(conversationId, send = { address, _, body, _ ->
             sentBody = body
             val id = repository.recordOutgoing(address, body, 5_000L)
             repository.updateOutgoingStatus(id, MessageStatus.SENT)
@@ -333,7 +333,7 @@ class ThreadViewModelTest {
     fun `resending a non-failed message does nothing`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
         var sendCount = 0
-        val model = viewModel(conversationId, send = { _, _, _ ->
+        val model = viewModel(conversationId, send = { _, _, _, _ ->
             sendCount += 1
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
         })
@@ -351,7 +351,7 @@ class ThreadViewModelTest {
     fun `queued attachments ride along on the send`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
         var sentAttachments: List<AttachmentPart>? = null
-        val model = viewModel(conversationId, send = { _, body, attachments ->
+        val model = viewModel(conversationId, send = { _, _, body, attachments ->
             sentAttachments = attachments
             val outcome = if (attachments.isEmpty()) {
                 SendOutcome(SendState.FAILED, 1, 1, ResultCode.GENERIC_FAILURE)
@@ -374,7 +374,7 @@ class ThreadViewModelTest {
     @Test
     fun `a failed send keeps the attachment queue for retry`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId, send = { _, _, _ ->
+        val model = viewModel(conversationId, send = { _, _, _, _ ->
             SendOutcome(SendState.FAILED, 1, 1, ResultCode.MMS_SEND_FAILED)
         })
         model.awaitLoaded()
@@ -486,7 +486,9 @@ class ThreadViewModelTest {
     fun `an mms resend re-attaches its stored parts`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
         var sentWith: List<AttachmentPart>? = null
-        val model = viewModel(conversationId, send = { _, _, attachments ->
+        var sentSubject: String? = null
+        val model = viewModel(conversationId, send = { _, subject, _, attachments ->
+            sentSubject = subject
             sentWith = attachments
             repository.recordOutgoing(recipient, "resent", 5_000L).let { repository.updateOutgoingStatus(it, MessageStatus.SENT) }
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
@@ -509,5 +511,6 @@ class ThreadViewModelTest {
         model.resendMessage(storedMessage)
 
         assertEquals(listOf("/tmp/k.jpg"), sentWith?.map { it.filePath })
+        assertEquals("subj", sentSubject)
     }
 }

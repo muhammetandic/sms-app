@@ -282,7 +282,9 @@ private fun SmsNavHost(
                     initialDraft = request?.body.orEmpty(),
                     isSmsRoleHeld = isSmsRoleHeld,
                     send = { address, body, attachments ->
-                        MmsSendGraph.sender(context).send(address, body, attachments)
+                        // The quick compose screen has no subject field; the
+                        // thread composer is where an MMS subject is set.
+                        MmsSendGraph.sender(context).send(address, null, body, attachments)
                     },
                 ),
             )
@@ -375,8 +377,8 @@ private fun SmsNavHost(
                     conversationId = conversationId,
                     recipient = recipient,
                     isSmsRoleHeld = isSmsRoleHeld,
-                    send = { address, body, attachments ->
-                        MmsSendGraph.sender(context).send(address, body, attachments)
+                    send = { address, subject, body, attachments ->
+                        MmsSendGraph.sender(context).send(address, subject, body, attachments)
                     },
                     download = { messageId ->
                         MmsSendGraph.downloader(context).download(repository, messageId)

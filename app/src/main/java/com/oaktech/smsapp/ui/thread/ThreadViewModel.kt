@@ -63,7 +63,7 @@ class ThreadViewModel(
     private val conversationId: Long,
     private val recipient: String,
     private val isSmsRoleHeld: () -> Boolean,
-    private val send: suspend (recipient: String, body: String, attachments: List<AttachmentPart>) -> SendOutcome,
+    private val send: suspend (recipient: String, subject: String?, body: String, attachments: List<AttachmentPart>) -> SendOutcome,
     private val download: suspend (messageId: Long) -> Boolean,
 ) : ViewModel() {
 
@@ -143,7 +143,7 @@ class ThreadViewModel(
         viewModelScope.launch { repository.saveDraft(conversationId, body) }
     }
 
-    fun onDraftSubmitted(body: String) {
+    fun onDraftSubmitted(body: String, subject: String = "") {
         val trimmed = body.trim()
         if ((trimmed.isEmpty() && pendingAttachments.value.isEmpty() || sending.value || recipient.isBlank())) return
 
@@ -158,7 +158,7 @@ class ThreadViewModel(
             lastFailure.value = null
             try {
                 val attachments = pendingAttachments.value
-                val outcome = send(recipient, trimmed, attachments)
+                val outcome = send(recipient, subject.trim().ifBlank { null }, trimmed, attachments)
                 if (outcome.state == SendState.FAILED) {
                     lastFailure.value = "Message failed to send"
                 } else if (attachments.isNotEmpty()) {
@@ -240,6 +240,8 @@ class ThreadViewModel(
             try {
                 val outcome = send(
                     if (attachments.isEmpty()) recipient else members.joinToString(", "),
+                    // A retried MMS keeps its subject; an SMS has none to keep.
+                    message.subject,
                     message.body,
                     attachments,
                 )
@@ -285,7 +287,7 @@ class ThreadViewModel(
             conversationId: Long,
             recipient: String,
             isSmsRoleHeld: () -> Boolean,
-            send: suspend (String, String, List<AttachmentPart>) -> SendOutcome,
+            send: suspend (String, String?, String, List<AttachmentPart>) -> SendOutcome,
             download: suspend (Long) -> Boolean = { false },
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")

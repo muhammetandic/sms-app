@@ -150,6 +150,21 @@ class TurkishTranslationTest {
     }
 
     @Test
+    fun `composer counter and subject strings are translated`() {
+        val tr = inTurkish()
+
+        assertEquals("Konu", tr.getString(R.string.thread_subject_hint))
+        assertEquals("Mesaj konusu", tr.getString(R.string.thread_subject_label))
+        // Numeric placeholders reorder nothing, but the plural is real: Turkish
+        // has one form, yet the resource must still resolve without falling back.
+        assertEquals(
+            "12/153 · 2 parça",
+            tr.resources.getQuantityString(R.plurals.thread_segment_parts, 2, 12, 153, 2),
+        )
+        assertEquals("12/160", tr.getString(R.string.thread_segment_counter, 12, 160))
+    }
+
+    @Test
     fun `unread count is a plural in turkish`() {
         val tr = inTurkish()
         val plurals = tr.resources.getQuantityString(

@@ -23,6 +23,8 @@
     <string name="thread_empty">No messages in this conversation</string>
     <string name="thread_back">Back</string>
     <string name="thread_draft_hint">Message</string>
+    <string name="thread_subject_hint">Subject</string>
+    <string name="thread_subject_label">Message subject</string>
     <string name="thread_send">Send message</string>
     <string name="thread_composer_description">Message text</string>
     <string name="thread_outgoing_description">You, %1$s: %2$s</string>
@@ -34,6 +36,13 @@
     <string name="thread_send_failed">Message could not be sent</string>
     <string name="thread_attach">Add attachment</string>
     <string name="thread_remove_attachment">Remove attachment</string>
+    <!-- SMS segment counter: units used in the current part / its capacity. -->
+    <string name="thread_segment_counter">%1$d/%2$d</string>
+    <!-- Concatenated SMS: current part usage plus how many parts the text makes. -->
+    <plurals name="thread_segment_parts">
+        <item quantity="one">%1$d/%2$d · %3$d part</item>
+        <item quantity="other">%1$d/%2$d · %3$d parts</item>
+    </plurals>
     <string name="thread_download_attachment">Download</string>
     <string name="thread_share_attachment">Share attachment</string>
     <string name="thread_send_failed_dismiss">Dismiss</string>

@@ -61,7 +61,7 @@ class RespondViaMessageService : Service() {
                 // The routing sender splits a comma-joined group into its
                 // members and sends over MMS, exactly as the composer would;
                 // a single recipient stays on SMS.
-                MmsSendGraph.sender(applicationContext).send(recipient, body, emptyList())
+                MmsSendGraph.sender(applicationContext).send(recipient, null, body, emptyList())
             } catch (t: Throwable) {
                 Log.e(LogTags.SEND, "Reply from RESPOND_VIA_MESSAGE failed", t)
             } finally {

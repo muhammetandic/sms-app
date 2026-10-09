@@ -11,7 +11,8 @@ import com.oaktech.smsapp.sms.mms.Route
  *
  * The SMS leg keeps the exact contract the SMS coordinator already had; the MMS
  * leg expands a display group address into its members and persists the message
- * together with whatever attachments the composer queued.
+ * together with whatever attachments the composer queued. [subject] is an MMS
+ * affordance, so the SMS leg drops it rather than inventing a place for it.
  */
 class RouteAwareMessageSender(
     private val sms: suspend (recipient: String, body: String) -> SendOutcome,
@@ -19,6 +20,7 @@ class RouteAwareMessageSender(
 ) {
     suspend fun send(
         recipient: String,
+        subject: String?,
         body: String,
         attachments: List<AttachmentPart>,
     ): SendOutcome {
@@ -28,7 +30,7 @@ class RouteAwareMessageSender(
             Route.SMS -> sms(recipient, body)
             Route.MMS -> mms.send(
                 recipients = if (members.isEmpty()) listOf(recipient) else members,
-                subject = null,
+                subject = subject?.takeIf { it.isNotBlank() },
                 body = body,
                 attachments = attachments,
             )

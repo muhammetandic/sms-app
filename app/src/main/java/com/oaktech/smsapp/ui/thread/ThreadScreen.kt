@@ -80,8 +80,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.oaktech.smsapp.R
 import com.oaktech.smsapp.data.AttachmentPart
+import com.oaktech.smsapp.data.local.AddressNormalizer
 import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.sms.send.ResultCode
+import com.oaktech.smsapp.sms.send.SmsSegments
 import com.oaktech.smsapp.ui.TimeFormat
 import com.oaktech.smsapp.ui.components.LinkifiedText
 import com.oaktech.smsapp.ui.components.ReadOnlyBanner
@@ -93,6 +95,8 @@ class ThreadTestTags {
         const val COMPOSER = "thread_composer"
         const val MESSAGE_LIST = "thread_message_list"
         const val DOWNLOAD_BUTTON = "thread_download_button"
+        const val SEGMENT_COUNTER = "thread_segment_counter"
+        const val SUBJECT_FIELD = "thread_subject_field"
     }
 }
 
@@ -189,6 +193,9 @@ fun ThreadRoute(
     // field while the user is typing.
     val persistedDraft by viewModel.draft.collectAsStateWithLifecycle()
     var draftText by rememberSaveable { mutableStateOf("") }
+    // The subject only exists on the MMS leg, so it is not stored with the
+    // draft; it lives with the other composer state and clears on send.
+    var subjectText by rememberSaveable { mutableStateOf("") }
     var draftSeeded by remember { mutableStateOf(false) }
     LaunchedEffect(persistedDraft) {
         if (!draftSeeded) {
@@ -227,9 +234,12 @@ fun ThreadRoute(
             draftText = text
             viewModel.onDraftChanged(text)
         },
+        subject = subjectText,
+        onSubjectChange = { subjectText = it },
         onSubmit = { body ->
-            viewModel.onDraftSubmitted(body)
+            viewModel.onDraftSubmitted(body, subjectText)
             draftText = ""
+            subjectText = ""
         },
         onRequestSmsRole = onRequestSmsRole,
         onDeleteMessage = viewModel::deleteMessage,
@@ -252,6 +262,8 @@ fun ThreadScreen(
     onBack: () -> Unit,
     draft: String,
     onDraftChange: (String) -> Unit,
+    subject: String,
+    onSubjectChange: (String) -> Unit,
     onSubmit: (String) -> Unit,
     onRequestSmsRole: () -> Unit,
     onDeleteMessage: (Long) -> Unit,
@@ -328,6 +340,11 @@ fun ThreadScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             if (state.canSend) {
+                // The counter describes SMS parts only. A group address (several
+                // members) or any attachment sends the text as MMS, where it is
+                // one body and the per-part arithmetic does not apply.
+                val isMms = state.pendingAttachments.isNotEmpty() ||
+                    AddressNormalizer.membersOf(recipient).size > 1
                 Composer(
                     draft = draft,
                     onDraftChange = onDraftChange,
@@ -336,6 +353,10 @@ fun ThreadScreen(
                     pendingAttachments = state.pendingAttachments,
                     onPickAttachment = onPickAttachment,
                     onRemoveAttachment = onRemoveAttachment,
+                    showSegmentCounter = !isMms,
+                    subject = subject,
+                    onSubjectChange = onSubjectChange,
+                    showSubject = isMms,
                 )
             }
         },
@@ -735,8 +756,14 @@ private fun Composer(
     pendingAttachments: List<AttachmentPart>,
     onPickAttachment: () -> Unit,
     onRemoveAttachment: (String) -> Unit,
+    showSegmentCounter: Boolean,
+    subject: String,
+    onSubjectChange: (String) -> Unit,
+    showSubject: Boolean,
 ) {
     val draftLabel = stringResource(R.string.thread_composer_description)
+    val subjectLabel = stringResource(R.string.thread_subject_label)
+    val subjectHint = stringResource(R.string.thread_subject_hint)
     val sendLabel = stringResource(R.string.thread_send)
     val hint = stringResource(R.string.thread_draft_hint)
     val attachLabel = stringResource(R.string.thread_attach)
@@ -749,6 +776,25 @@ private fun Composer(
                 .fillMaxWidth()
                 .testTag(ThreadTestTags.COMPOSER),
         ) {
+            // The subject is an MMS-only field: it appears once the message has
+            // an attachment or several recipients, which is what makes the route
+            // MMS. Showing it for a plain SMS would offer a field the SMS leg
+            // silently drops.
+            if (showSubject) {
+                OutlinedTextField(
+                    value = subject,
+                    onValueChange = onSubjectChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, top = 8.dp)
+                        .testTag(ThreadTestTags.SUBJECT_FIELD)
+                        .semantics { contentDescription = subjectLabel },
+                    label = { Text(subjectHint) },
+                    singleLine = true,
+                    enabled = !isSending,
+                )
+            }
+
             if (pendingAttachments.isNotEmpty()) {
                 Row(
                     modifier = Modifier
@@ -781,17 +827,49 @@ private fun Composer(
                     Icon(imageVector = Icons.Filled.Add, contentDescription = null)
                 }
 
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = onDraftChange,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag(ThreadTestTags.DRAFT_FIELD)
-                        .semantics { contentDescription = draftLabel },
-                    placeholder = { Text(hint) },
-                    maxLines = 5,
-                    enabled = !isSending,
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = onDraftChange,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(ThreadTestTags.DRAFT_FIELD)
+                            .semantics { contentDescription = draftLabel },
+                        placeholder = { Text(hint) },
+                        maxLines = 5,
+                        enabled = !isSending,
+                    )
+
+                    if (showSegmentCounter && draft.isNotEmpty()) {
+                        // Warns before a send that will cost several messages.
+                        // A blank field has no counter to show.
+                        val estimate = SmsSegments.estimate(draft)
+                        val counter = if (estimate.segments > 1) {
+                            pluralStringResource(
+                                R.plurals.thread_segment_parts,
+                                estimate.segments,
+                                estimate.usedInCurrentSegment,
+                                estimate.segmentLimit,
+                                estimate.segments,
+                            )
+                        } else {
+                            stringResource(
+                                R.string.thread_segment_counter,
+                                estimate.usedInCurrentSegment,
+                                estimate.segmentLimit,
+                            )
+                        }
+                        Text(
+                            text = counter,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .padding(top = 2.dp, end = 4.dp)
+                                .testTag(ThreadTestTags.SEGMENT_COUNTER),
+                        )
+                    }
+                }
 
                 FilledIconButton(
                     onClick = {
