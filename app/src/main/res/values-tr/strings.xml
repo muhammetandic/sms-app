@@ -21,8 +21,6 @@
     <string name="thread_empty">Bu sohbette mesaj yok</string>
     <string name="thread_back">Geri</string>
     <string name="thread_draft_hint">Mesaj</string>
-    <string name="thread_subject_hint">Konu</string>
-    <string name="thread_subject_label">Mesaj konusu</string>
     <string name="thread_send">Mesaj gönder</string>
     <string name="thread_composer_description">Mesaj metni</string>
     <string name="thread_outgoing_description">Siz, %1$s: %2$s</string>
@@ -32,10 +30,6 @@
     <string name="thread_status_delivered">Teslim edildi</string>
     <string name="thread_status_failed">Gönderilemedi</string>
     <string name="thread_send_failed">Mesaj gönderilemedi</string>
-    <string name="thread_mms_network_failed">MMS ağı kullanılamıyor. Mobil veriyi ve operatör hizmetini kontrol edin.</string>
-    <string name="thread_download_failed">Ek indirilemedi</string>
-    <string name="thread_attach">Ek ekle</string>
-    <string name="thread_remove_attachment">Eki kaldır</string>
     <!-- SMS segment counter: units used in the current part / its capacity. -->
     <string name="thread_segment_counter">%1$d/%2$d</string>
     <!-- Concatenated SMS: current part usage plus how many parts the text makes. -->
@@ -43,8 +37,6 @@
         <item quantity="one">%1$d/%2$d · %3$d parça</item>
         <item quantity="other">%1$d/%2$d · %3$d parça</item>
     </plurals>
-    <string name="thread_download_attachment">İndir</string>
-    <string name="thread_share_attachment">Eki paylaş</string>
     <string name="thread_send_failed_dismiss">Kapat</string>
     <string name="thread_mute">Sohbeti sessize al</string>
     <string name="thread_unmute">Sohbetin sesini aç</string>
@@ -66,6 +58,7 @@
     <string name="compose_title">Yeni mesaj</string>
     <string name="compose_recipient_label">Alıcının telefon numarası</string>
     <string name="compose_recipient_hint">Kime</string>
+    <string name="compose_pick_contact">Kişi seç</string>
     <string name="compose_send">Gönder</string>
     <string name="compose_error_no_recipient">Alıcı yok</string>
     <string name="compose_error_bad_recipient">Alıcı telefon numarası olarak çözümlenemiyor</string>
@@ -79,16 +72,18 @@
     <string name="notification_action_read">Okundu</string>
     <string name="notification_action_spam">Önemsiz</string>
     <string name="notification_action_delete">Sil</string>
-    <string name="notification_mms_no_text">Çoklu ortam mesajı</string>
-    <plurals name="notification_attachments">
-        <item quantity="one">%1$d ek</item>
-        <item quantity="other">%1$d ek</item>
-    </plurals>
+    <!-- Shown when an incoming message has no text to describe it. -->
+    <string name="notification_no_text">Yeni mesaj</string>
 
     <string name="spam_title">Önemsiz</string>
     <string name="spam_empty">Önemsiz mesaj yok</string>
     <string name="spam_open">Önemsiz klasörünü aç</string>
     <string name="spam_restore">Önemsizlerden çıkar</string>
+    <string name="drafts_title">Taslaklar</string>
+    <string name="drafts_open">Taslakları aç</string>
+    <string name="drafts_empty">Taslak yok</string>
+    <string name="drafts_delete">Taslağı sil</string>
+    <string name="drafts_send">Taslağı gönder</string>
 
     <string name="selection_close">Seçimi kapat</string>
     <!-- Turkish selects between "one" and "other" even though they read alike. -->
@@ -153,6 +148,9 @@
     <string name="settings_sim">SIM</string>
     <string name="settings_sim_body">Yeni mesajların hangi SIM\'den gönderileceğini seçin.</string>
     <string name="settings_sim_follow_default">Sistem varsayılanı</string>
+
+    <string name="settings_notification_actions">Bildirim işlemleri</string>
+    <string name="settings_notification_actions_body">Gelen mesaj bildirimlerinde hangi hızlı işlemlerin görüneceğini seçin.</string>
 
     <string name="settings_blocked">Engellenen gönderenler</string>
     <string name="settings_blocked_body">Engellenen gönderenlerden gelen mesajlar sizi bilgilendirmeden önemsiz klasörüne kaydedilir.</string>

@@ -21,18 +21,18 @@ object SendValidator {
         BODY_TOO_LONG,
     }
 
-    fun validate(recipient: String, body: String, hasAttachments: Boolean = false): Result {
+    fun validate(recipient: String, body: String): Result {
         val trimmedRecipient = recipient.trim()
         if (trimmedRecipient.isEmpty()) {
             return Result.Invalid(Reason.EMPTY_RECIPIENT, "No recipient")
         }
 
-        val recipients = trimmedRecipient.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+        val recipients = recipients(trimmedRecipient)
         if (recipients.isEmpty() || !recipients.all { isParseableRecipient(it) }) {
             return Result.Invalid(Reason.UNPARSEABLE_RECIPIENT, "Recipient cannot be parsed as a phone number")
         }
 
-        if (body.isBlank() && !hasAttachments) {
+        if (body.isBlank()) {
             return Result.Invalid(Reason.EMPTY_BODY, "Message body is empty")
         }
 
@@ -42,6 +42,14 @@ object SendValidator {
 
         return Result.Valid
     }
+
+    /**
+     * The distinct recipients a recipient field names. A SENDTO can carry
+     * several comma-separated addresses, and SMS has no group form, so each is
+     * sent its own message; splitting here keeps that rule in one place.
+     */
+    fun recipients(recipient: String): List<String> =
+        recipient.trim().split(',').map { it.trim() }.filter { it.isNotEmpty() }
 
     /**
      * A recipient is usable if it is either dialable or a short/alphanumeric

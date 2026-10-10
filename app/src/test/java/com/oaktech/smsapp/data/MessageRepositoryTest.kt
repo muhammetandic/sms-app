@@ -6,13 +6,13 @@ import com.oaktech.smsapp.data.local.MessageDirection
 import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.data.local.SmsDatabase
 import com.oaktech.smsapp.sms.receive.InboundMessage
-import com.oaktech.smsapp.sms.send.ResultCode
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -34,7 +34,7 @@ class MessageRepositoryTest {
             ApplicationProvider.getApplicationContext(),
             SmsDatabase::class.java,
         ).build()
-        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao(), database.attachmentDao())
+        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao())
     }
 
     @After
@@ -74,105 +74,14 @@ class MessageRepositoryTest {
     }
 
     @Test
-    fun `the attachment queue is persisted and cleared with the draft row`() = runTest {
-        repository.recordInbound(inbound(), partCount = 1)
-        val conversationId = requireNotNull(repository.conversationIdFor(inbound().address))
-        val part = AttachmentPart(fileName = "pic.jpg", contentType = "image/jpeg", filePath = "/tmp/pic.jpg", byteSize = 10)
+    fun `one contact can have multiple standalone drafts`() = runTest {
+        repository.saveDraftForRecipient("+15551234567", "first draft")
+        repository.saveDraftForRecipient("+15551234567", "second draft")
 
-        repository.savePendingAttachments(conversationId, listOf(part))
-        assertEquals(listOf(part), repository.getPendingAttachments(conversationId))
-
-        repository.savePendingAttachments(conversationId, emptyList())
-        assertTrue(repository.getPendingAttachments(conversationId).isEmpty())
-        assertNull(repository.observeDraft(conversationId).first())
-    }
-
-    @Test
-    fun `blanking a draft keeps its attachment queue`() = runTest {
-        repository.recordInbound(inbound(), partCount = 1)
-        val conversationId = requireNotNull(repository.conversationIdFor(inbound().address))
-        val part = AttachmentPart(fileName = "pic.jpg", contentType = "image/jpeg", filePath = "/tmp/pic.jpg", byteSize = 10)
-        repository.savePendingAttachments(conversationId, listOf(part))
-
-        repository.saveDraft(conversationId, "")
-
-        assertEquals("", repository.observeDraft(conversationId).first())
-        assertEquals(listOf(part), repository.getPendingAttachments(conversationId))
-    }
-
-    @Test
-    fun `referenced attachment paths cover both message attachments and unsent queues`() = runTest {
-        val messageId = repository.recordOutgoingMms(
-            recipients = listOf("+15551234567"),
-            subject = null,
-            body = "with photo",
-            sentAt = 1_700_000_000_000L,
-            attachments = emptyList(),
-        )
-        repository.addAttachment(
-            messageId,
-            AttachmentPart(fileName = "sent.jpg", contentType = "image/jpeg", filePath = "/tmp/sent.jpg", byteSize = 5),
-        )
-        repository.recordInbound(inbound(), partCount = 1)
-        val conversationId = requireNotNull(repository.conversationIdFor(inbound().address))
-        repository.savePendingAttachments(
-            conversationId,
-            listOf(
-                AttachmentPart(fileName = "queued.jpg", contentType = "image/jpeg", filePath = "/tmp/queued.jpg", byteSize = 5),
-            ),
-        )
-
-        assertEquals(
-            setOf("/tmp/sent.jpg", "/tmp/queued.jpg"),
-            repository.referencedAttachmentPaths(),
-        )
-    }
-
-    @Test
-    fun `a failed outgoing mms exposes its content for a retry`() = runTest {
-        val part = AttachmentPart(fileName = "a.jpg", contentType = "image/jpeg", filePath = "/tmp/a.jpg", byteSize = 3)
-        val id = repository.recordOutgoingMms(
-            recipients = listOf("+15551234567", "+15557654321"),
-            subject = "hi",
-            body = "pic",
-            sentAt = 1_700_000_000_000L,
-            attachments = listOf(part),
-        )
-        repository.updateOutgoingError(id, ResultCode.MMS_NETWORK_UNAVAILABLE.platformCode)
-
-        val retry = repository.outgoingMmsRetry(id)
-
-        assertEquals(id, retry?.rowId)
-        assertEquals(listOf("+15551234567", "+15557654321"), retry?.recipients)
-        assertEquals("hi", retry?.subject)
-        assertEquals("pic", retry?.body)
-        assertEquals(1_700_000_000_000L, retry?.sentAt)
-        assertEquals(listOf(part), retry?.attachments)
-    }
-
-    @Test
-    fun `an sms or a sent mms is not offered for a background retry`() = runTest {
-        val smsId = repository.recordOutgoing("+15551234567", "hi", 1L)
-        repository.updateOutgoingStatus(smsId, MessageStatus.FAILED)
-        assertNull(repository.outgoingMmsRetry(smsId))
-
-        val mmsId = repository.recordOutgoingMms(listOf("+15551234567"), null, "sent", 1L, emptyList())
-        repository.updateOutgoingStatus(mmsId, MessageStatus.SENT)
-        assertNull(repository.outgoingMmsRetry(mmsId))
-    }
-
-    @Test
-    fun `only a failed mms can be flipped back to sending`() = runTest {
-        val mmsId = repository.recordOutgoingMms(listOf("+15551234567"), null, "x", 1L, emptyList())
-        repository.updateOutgoingError(mmsId, ResultCode.MMS_SEND_FAILED.platformCode)
-
-        assertTrue(repository.markFailedMmsSending(mmsId))
-        assertEquals(MessageStatus.SENDING, repository.getMessage(mmsId)?.status)
-        assertFalse("a second claim must not win", repository.markFailedMmsSending(mmsId))
-
-        val smsId = repository.recordOutgoing("+15551234567", "x", 1L)
-        repository.updateOutgoingStatus(smsId, MessageStatus.FAILED)
-        assertFalse(repository.markFailedMmsSending(smsId))
+        val drafts = repository.observeDraftConversations().first()
+        assertEquals(2, drafts.size)
+        assertEquals(setOf("first draft", "second draft"), drafts.map { it.body }.toSet())
+        assertNotEquals(drafts[0].draftId, drafts[1].draftId)
     }
 
     @Test

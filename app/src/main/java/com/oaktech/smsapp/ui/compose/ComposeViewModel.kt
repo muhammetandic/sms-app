@@ -3,7 +3,6 @@ package com.oaktech.smsapp.ui.compose
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.sms.send.SendOutcome
 import com.oaktech.smsapp.sms.send.SendState
 import com.oaktech.smsapp.sms.send.SendValidator
@@ -16,7 +15,6 @@ import kotlinx.coroutines.launch
 data class ComposeUiState(
     val recipient: String = "",
     val draft: String = "",
-    val attachments: List<AttachmentPart> = emptyList(),
     val isSending: Boolean = false,
     val isFinished: Boolean = false,
     val error: ComposeError? = null,
@@ -41,17 +39,12 @@ sealed interface ComposeError {
  * Separate from the thread screen because the recipient comes from another app
  * and has not been seen before: it is untrusted input, so it is validated the
  * same way a typed number is rather than being passed straight to the radio.
- *
- * Attachments ride along on the 3-argument send seam, so appending media here
- * routes the message through the same SMS↔MMS decision the thread composer
- * uses. The caller stores the bytes first (as a picked file lives outside our
- * sandbox) and hands in an [AttachmentPart] with a local file path.
  */
 class ComposeViewModel(
     initialRecipient: String,
     initialDraft: String,
     private val isSmsRoleHeld: () -> Boolean,
-    private val send: suspend (String, String, List<AttachmentPart>) -> SendOutcome,
+    private val send: suspend (String, String) -> SendOutcome,
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(
@@ -63,20 +56,25 @@ class ComposeViewModel(
         it.copy(recipient = value, error = null)
     }
 
-    fun onDraftChanged(value: String) = mutableState.update {
-        it.copy(draft = value, error = null)
-    }
-
-    fun queueAttachment(attachment: AttachmentPart) {
-        if (attachment.filePath == null) return
+    /** Adds a picked contact without replacing recipients already selected. */
+    fun addRecipient(address: String) {
+        val trimmed = address.trim()
+        if (trimmed.isEmpty()) return
         mutableState.update {
-            if (it.attachments.any { part -> part.filePath == attachment.filePath }) it
-            else it.copy(attachments = it.attachments + attachment)
+            val existing = it.recipient
+                .split(',')
+                .map(String::trim)
+                .filter(String::isNotEmpty)
+            if (existing.any { current -> current.equals(trimmed, ignoreCase = true) }) {
+                it
+            } else {
+                it.copy(recipient = (existing + trimmed).joinToString(", "), error = null)
+            }
         }
     }
 
-    fun removeAttachment(filePath: String) = mutableState.update {
-        it.copy(attachments = it.attachments.filterNot { part -> part.filePath == filePath })
+    fun onDraftChanged(value: String) = mutableState.update {
+        it.copy(draft = value, error = null)
     }
 
     fun onSend() {
@@ -85,9 +83,8 @@ class ComposeViewModel(
 
         val recipient = state.recipient.trim()
         val body = state.draft.trim()
-        val attachments = state.attachments
 
-        val validation = SendValidator.validate(recipient, body, hasAttachments = attachments.isNotEmpty())
+        val validation = SendValidator.validate(recipient, body)
         if (validation is SendValidator.Result.Invalid) {
             mutableState.update { it.copy(error = ComposeError.Invalid(validation.reason)) }
             return
@@ -96,14 +93,24 @@ class ComposeViewModel(
         viewModelScope.launch {
             mutableState.update { it.copy(isSending = true, error = null) }
             try {
-                val outcome = send(recipient, body, attachments)
-                if (outcome.state == SendState.FAILED) {
+                // A SENDTO can name several recipients; SMS has no group form,
+                // so each gets its own message. Report a failure if any leg
+                // failed, but still finish: the successfully-sent legs must not
+                // be retried as a draft.
+                var anyFailed = false
+                for (destination in SendValidator.recipients(recipient)) {
+                    if (send(destination, body).state == SendState.FAILED) anyFailed = true
+                }
+                if (anyFailed) {
                     mutableState.update { it.copy(error = ComposeError.SendFailed) }
                 } else {
                     // Returning to the caller is the expected end state for a
                     // SENDTO request; leaving the screen up looks like a hang.
                     mutableState.update {
-                        it.copy(attachments = emptyList(), isFinished = true)
+                        // Clear the consumed body before navigation. The
+                        // compose destination saves non-empty text on back,
+                        // and a successful send must never become a draft.
+                        it.copy(draft = "", isFinished = true)
                     }
                 }
             } finally {
@@ -119,7 +126,7 @@ class ComposeViewModel(
             initialRecipient: String,
             initialDraft: String,
             isSmsRoleHeld: () -> Boolean,
-            send: suspend (String, String, List<AttachmentPart>) -> SendOutcome,
+            send: suspend (String, String) -> SendOutcome,
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =

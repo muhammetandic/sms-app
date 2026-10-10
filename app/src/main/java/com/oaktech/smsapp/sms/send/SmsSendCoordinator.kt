@@ -49,6 +49,16 @@ class SmsSendCoordinator(
             )
         }
 
+        if (!transport.canSend()) {
+            android.util.Log.w(LogTags.SEND, "Rejected send: SEND_SMS is not granted")
+            return SendOutcome(
+                state = SendState.FAILED,
+                failedParts = 0,
+                totalParts = 0,
+                code = ResultCode.GENERIC_FAILURE,
+            )
+        }
+
         when (val validation = SendValidator.validate(recipient, body)) {
             is SendValidator.Result.Invalid -> {
                 android.util.Log.w(LogTags.SEND, "Rejected send: ${validation.detail}")

@@ -39,13 +39,10 @@ interface MessageDao {
     suspend fun countByDedupeKey(dedupeKey: String): Int
 
     /**
-     * The local row already linked to a provider row of this kind, if any.
-     *
-     * Kind-scoped because the SMS and MMS provider tables number their rows
-     * independently, so id 5 exists in both and only `is_mms` tells them apart.
+     * The local row already linked to a provider row, if any.
      */
-    @Query("SELECT id FROM messages WHERE provider_id = :providerId AND is_mms = :isMms LIMIT 1")
-    suspend fun idForProvider(providerId: Long, isMms: Boolean): Long?
+    @Query("SELECT id FROM messages WHERE provider_id = :providerId LIMIT 1")
+    suspend fun idForProvider(providerId: Long): Long?
 
     /** How many messages a conversation still holds, to spot the last one going. */
     @Query("SELECT COUNT(*) FROM messages WHERE conversation_id = :conversationId")
@@ -103,23 +100,6 @@ interface MessageDao {
     /** Marks a still-SENDING row failed with the platform code. */
     @Query("UPDATE messages SET status = 'FAILED', error_code = :errorCode WHERE id = :id AND status = 'SENDING'")
     suspend fun failIfSending(id: Long, errorCode: Int)
-
-    /**
-     * Returns a failed outgoing MMS to SENDING for a background retry. Scoped to
-     * FAILED and MMS so an attempt that races a manual resend, a delete, or
-     * another attempt changes nothing; the row count is how the caller learns
-     * whether it actually owns the retry.
-     */
-    @Query("UPDATE messages SET status = 'SENDING', error_code = NULL WHERE id = :id AND status = 'FAILED' AND is_mms = 1")
-    suspend fun markFailedMmsSending(id: Long): Int
-
-    /** Notifies the thread that an inbound MMS's media has (not) arrived. */
-    @Query("UPDATE messages SET download_state = :state WHERE id = :id")
-    suspend fun updateDownloadState(id: Long, state: DownloadState)
-
-    /** Updates the body and subject of an MMS row after retrieval. */
-    @Query("UPDATE messages SET body = :body, subject = COALESCE(:subject, subject) WHERE id = :id")
-    suspend fun updateContent(id: Long, body: String, subject: String?)
 
     /**
      * Marks a row delivered the moment its report arrives, which is the only

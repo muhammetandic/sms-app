@@ -17,9 +17,27 @@ class ComposeIntentParserTest {
     }
 
     @Test
-    fun `mms schemes carry a recipient too`() {
-        assertEquals(listOf("+15551234567"), ComposeIntentParser.recipientsFrom("mms:+15551234567"))
-        assertEquals(listOf("+15551234567"), ComposeIntentParser.recipientsFrom("mmsto:+15551234567"))
+    fun `percent encoded contact recipient is decoded`() {
+        assertEquals(
+            listOf("+90 553 067 66 91"),
+            ComposeIntentParser.recipientsFrom("smsto:%2B90%20553%20067%2066%2091"),
+        )
+    }
+
+    @Test
+    fun `literal plus in recipient remains plus`() {
+        assertEquals(
+            listOf("+905530676691"),
+            ComposeIntentParser.recipientsFrom("smsto:+905530676691"),
+        )
+    }
+
+    @Test
+    fun `mms schemes are no longer recognized`() {
+        // MMS support was removed; an mms: URI must not be parsed as a recipient
+        // by a parser that only knows about sms and smsto.
+        assertEquals(emptyList<String>(), ComposeIntentParser.recipientsFrom("mms:+15551234567"))
+        assertEquals(emptyList<String>(), ComposeIntentParser.recipientsFrom("mmsto:+15551234567"))
     }
 
     @Test

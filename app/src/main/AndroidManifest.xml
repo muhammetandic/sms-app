@@ -5,11 +5,10 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Retained so the app qualifies for ROLE_SMS: the system role definition
+         requires a WAP_PUSH_DELIVER receiver, and without this permission the
+         platform can drop that broadcast. The app does not process MMS. -->
     <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
-    <uses-permission android:name="android.permission.RECEIVE_MMS" />
-    <uses-permission android:name="android.permission.SEND_MMS" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- Enables the vibration on the incoming-message channel; a normal
       permission, granted automatically at install time. -->
@@ -46,15 +45,13 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Compose an SMS: sms: / smsto: / mms: / mmsto: -->
+            <!-- Compose an SMS: sms: / smsto: -->
             <intent-filter>
                 <action android:name="android.intent.action.SENDTO" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="sms" />
                 <data android:scheme="smsto" />
-                <data android:scheme="mms" />
-                <data android:scheme="mmsto" />
             </intent-filter>
 
             <!-- Share text into the app from another app -->
@@ -75,19 +72,16 @@
             </intent-filter>
         </receiver>
 
-        <!-- MMS arrives on WAP Push. The DELIVER form is the network's torrent to the
-         default SMS app; the RECEIVED form is the broadcast apps get without
-         holding the role, which also carries the PDU this app stores. -->
+        <!-- The system's ROLE_SMS definition requires a WAP_PUSH_DELIVER
+             receiver with the MMS MIME type, so this declaration is what keeps
+             the app eligible to be the default SMS app. It deliberately does
+             nothing: the app supports SMS only. -->
         <receiver
             android:name=".sms.receive.WapPushDeliverReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_WAP_PUSH">
             <intent-filter>
                 <action android:name="android.provider.Telephony.WAP_PUSH_DELIVER" />
-                <data android:mimeType="application/vnd.wap.mms-message" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.provider.Telephony.WAP_PUSH_RECEIVED" />
                 <data android:mimeType="application/vnd.wap.mms-message" />
             </intent-filter>
         </receiver>
@@ -116,20 +110,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:scheme="sms" />
                 <data android:scheme="smsto" />
-                <data android:scheme="mms" />
-                <data android:scheme="mmsto" />
             </intent-filter>
         </service>
-
-        <!-- Shares MMS attachments back out of app storage. -->
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.files"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths" />
-        </provider>
     </application>
 </manifest>

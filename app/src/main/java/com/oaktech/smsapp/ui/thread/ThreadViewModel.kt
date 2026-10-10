@@ -3,15 +3,11 @@ package com.oaktech.smsapp.ui.thread
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.oaktech.smsapp.data.AttachmentPart
+import android.util.Log
 import com.oaktech.smsapp.data.MessageRepository
-import com.oaktech.smsapp.data.local.AddressNormalizer
-import com.oaktech.smsapp.data.local.AttachmentEntity
-import com.oaktech.smsapp.data.local.DownloadState
 import com.oaktech.smsapp.data.local.MessageDirection
 import com.oaktech.smsapp.data.local.MessageEntity
 import com.oaktech.smsapp.data.local.MessageStatus
-import com.oaktech.smsapp.sms.send.ResultCode
 import com.oaktech.smsapp.sms.send.SendOutcome
 import com.oaktech.smsapp.sms.send.SendState
 import com.oaktech.smsapp.ui.TimeFormat
@@ -29,16 +25,15 @@ data class ThreadUiState(
     val isSending: Boolean = false,
     val lastFailure: ThreadFailure? = null,
     val canSend: Boolean = false,
-    val pendingAttachments: List<AttachmentPart> = emptyList(),
     val isMuted: Boolean = false,
 )
 
 /**
  * The transient failure a thread can surface. Kept as a value rather than a
  * sentence so the wording stays in the (translatable) resources owned by the
- * composable, and the two causes can read differently.
+ * composable.
  */
-enum class ThreadFailure { SEND, MMS_NETWORK, DOWNLOAD }
+enum class ThreadFailure { SEND }
 
 data class MessageBubble(
     val id: Long,
@@ -51,19 +46,6 @@ data class MessageBubble(
     val errorCode: Int? = null,
     val simSlot: Int? = null,
     val partCount: Int = 1,
-    val isMms: Boolean = false,
-    val subject: String? = null,
-    val attachments: List<AttachmentUi> = emptyList(),
-    /** Media was advertised by the PDU but has not landed: offer the download. */
-    val needsDownload: Boolean = false,
-)
-
-/** The parts of a bubble the composer and the details sheet show. */
-data class AttachmentUi(
-    val id: Long,
-    val fileName: String,
-    val contentType: String,
-    val filePath: String?,
 )
 
 class ThreadViewModel(
@@ -71,14 +53,12 @@ class ThreadViewModel(
     private val conversationId: Long,
     private val recipient: String,
     private val isSmsRoleHeld: () -> Boolean,
-    private val send: suspend (recipient: String, subject: String?, body: String, attachments: List<AttachmentPart>) -> SendOutcome,
-    private val download: suspend (messageId: Long) -> Boolean,
+    private val send: suspend (recipient: String, body: String) -> SendOutcome,
 ) : ViewModel() {
 
     private val roleHeld = MutableStateFlow(isSmsRoleHeld())
     private val sending = MutableStateFlow(false)
     private val lastFailure = MutableStateFlow<ThreadFailure?>(null)
-    private val pendingAttachments = MutableStateFlow<List<AttachmentPart>>(emptyList())
     private val muted = MutableStateFlow(false)
 
     /** The stored draft for this conversation, null until the store has spoken. */
@@ -89,23 +69,16 @@ class ThreadViewModel(
             initialValue = null,
         )
 
-    private val messagesAndAttachments: Flow<Pair<List<MessageEntity>, Map<Long, List<AttachmentUi>>>> =
-        combine(
-            repository.observeMessages(conversationId),
-            repository.observeConversationAttachments(conversationId),
-        ) { messages, attachments ->
-            messages to attachments.groupBy(
-                keySelector = { it.messageId },
-                valueTransform = { it.toUi() },
-            )
-        }
+    private val messages: Flow<List<MessageEntity>> = repository.observeMessages(conversationId)
 
     val uiState: StateFlow<ThreadUiState> = combine(
-        messagesAndAttachments,
-        combine(roleHeld, sending, lastFailure, pendingAttachments, muted, ::Quintuple),
-    ) { (messages, attachmentsByMessage), (roleIsHeld, isSending, failure, queue, mutedConversation) ->
+        messages,
+        combine(roleHeld, sending, lastFailure, muted) { role, isSending, failure, mutedConversation ->
+            Quadruple(role, isSending, failure, mutedConversation)
+        },
+    ) { messages, (roleIsHeld, isSending, failure, mutedConversation) ->
         ThreadUiState(
-            messages = messages.map { it.toBubble(attachmentsByMessage[it.id].orEmpty()) },
+            messages = messages.map { it.toBubble() },
             isReadOnly = !roleIsHeld,
             isSending = isSending,
             lastFailure = failure,
@@ -113,7 +86,6 @@ class ThreadViewModel(
             // resolves. Sending to an empty recipient is unrecoverable, so the
             // composer stays hidden until there is a real address to send to.
             canSend = roleIsHeld && recipient.isNotBlank(),
-            pendingAttachments = queue,
             isMuted = mutedConversation,
         )
     }.stateIn(
@@ -126,10 +98,6 @@ class ThreadViewModel(
         viewModelScope.launch {
             repository.markConversationRead(conversationId)
             muted.value = repository.isMuted(conversationId)
-            // A queue is meaningless until the thread has an address to send to,
-            // but it is restored lazily here rather than in the state combine so
-            // the composer sees it only when this thread actually owns it.
-            pendingAttachments.value = repository.getPendingAttachments(conversationId)
         }
     }
 
@@ -151,81 +119,39 @@ class ThreadViewModel(
         viewModelScope.launch { repository.saveDraft(conversationId, body) }
     }
 
-    fun onDraftSubmitted(body: String, subject: String = "") {
+    fun onDraftSubmitted(body: String) {
         val trimmed = body.trim()
-        if ((trimmed.isEmpty() && pendingAttachments.value.isEmpty() || sending.value || recipient.isBlank())) return
+        if (trimmed.isEmpty() || sending.value || recipient.isBlank()) return
 
         viewModelScope.launch {
             // Once the text becomes a message there is nothing to restore, so the
             // draft is cleared as the send starts rather than after it resolves.
-            // A failure keeps the attachment queue (and its row) so the user can
-            // retry without re-picking files; only the text moves into the failed
-            // message bubble.
-            if (trimmed.isNotEmpty()) repository.saveDraft(conversationId, "")
+            repository.saveDraft(conversationId, "")
             sending.value = true
             lastFailure.value = null
             try {
-                val attachments = pendingAttachments.value
-                val outcome = send(recipient, subject.trim().ifBlank { null }, trimmed, attachments)
+                val outcome = send(recipient, trimmed)
                 if (outcome.state == SendState.FAILED) {
-                    lastFailure.value = if (outcome.code == ResultCode.MMS_NETWORK_UNAVAILABLE) {
-                        ThreadFailure.MMS_NETWORK
-                    } else {
-                        ThreadFailure.SEND
-                    }
-                } else if (attachments.isNotEmpty()) {
-                    // Sent and persisted: the composer queue has served its
-                    // purpose. A failure keeps the queue so the user can retry
-                    // without re-picking files.
-                    pendingAttachments.value = emptyList()
-                    repository.savePendingAttachments(conversationId, emptyList())
+                    lastFailure.value = ThreadFailure.SEND
                 }
+            } catch (throwable: Throwable) {
+                Log.e("SmsStore", "SMS send failed unexpectedly", throwable)
+                lastFailure.value = ThreadFailure.SEND
             } finally {
                 sending.value = false
             }
         }
-    }
-
-    fun queueAttachment(attachment: AttachmentPart) {
-        if (attachment.filePath == null) return
-        val updated = pendingAttachments.value + attachment
-        pendingAttachments.value = updated
-        viewModelScope.launch { repository.savePendingAttachments(conversationId, updated) }
-    }
-
-    fun removeAttachment(filePath: String) {
-        val updated = pendingAttachments.value.filterNot { it.filePath == filePath }
-        if (updated == pendingAttachments.value) return
-        pendingAttachments.value = updated
-        viewModelScope.launch { repository.savePendingAttachments(conversationId, updated) }
     }
 
     fun dismissFailure() {
         lastFailure.value = null
     }
 
-    /** Fetches the missing attachment of an inbound MMS and records it. */
-    fun downloadAttachment(messageId: Long) {
-        val bubble = uiState.value.messages.find { it.id == messageId } ?: return
-        if (!bubble.needsDownload || sending.value) return
-        viewModelScope.launch {
-            sending.value = true
-            try {
-                if (!download(messageId)) {
-                    lastFailure.value = ThreadFailure.DOWNLOAD
-                }
-            } finally {
-                sending.value = false
-            }
-        }
-    }
-
     /**
      * Re-sends a failed outgoing message. The failed row is dropped and the text
      * is composed again through the normal send path, so a retry behaves exactly
      * like a fresh message: same validation, same status resolution, and the
-     * failed bubble is replaced rather than corrected in place. An MMS retry
-     * re-attaches its stored parts.
+     * failed bubble is replaced rather than corrected in place.
      */
     fun resendMessage(messageId: Long) {
         viewModelScope.launch {
@@ -233,30 +159,11 @@ class ThreadViewModel(
             if (message.direction != MessageDirection.OUTGOING || message.status != MessageStatus.FAILED) {
                 return@launch
             }
-            val attachments = if (message.isMms) {
-                repository.getAttachments(messageId).map {
-                    AttachmentPart(
-                        fileName = it.fileName,
-                        contentType = it.contentType,
-                        filePath = it.filePath,
-                        byteSize = it.byteSize,
-                    )
-                }
-            } else {
-                emptyList()
-            }
             repository.deleteMessage(messageId)
-            val members = AddressNormalizer.membersOf(recipient)
             sending.value = true
             lastFailure.value = null
             try {
-                val outcome = send(
-                    if (attachments.isEmpty()) recipient else members.joinToString(", "),
-                    // A retried MMS keeps its subject; an SMS has none to keep.
-                    message.subject,
-                    message.body,
-                    attachments,
-                )
+                val outcome = send(recipient, message.body)
                 if (outcome.state == SendState.FAILED) {
                     lastFailure.value = ThreadFailure.SEND
                 }
@@ -274,7 +181,7 @@ class ThreadViewModel(
         viewModelScope.launch { repository.deleteMessage(messageId) }
     }
 
-    private fun MessageEntity.toBubble(attachments: List<AttachmentUi>) = MessageBubble(
+    private fun MessageEntity.toBubble() = MessageBubble(
         id = id,
         body = body,
         timestampLabel = TimeFormat.messageTimestamp(sentAt),
@@ -285,10 +192,6 @@ class ThreadViewModel(
         errorCode = errorCode,
         simSlot = simSlot,
         partCount = partCount,
-        isMms = isMms,
-        subject = subject,
-        attachments = attachments,
-        needsDownload = downloadState == DownloadState.PENDING,
     )
 
     companion object {
@@ -299,8 +202,7 @@ class ThreadViewModel(
             conversationId: Long,
             recipient: String,
             isSmsRoleHeld: () -> Boolean,
-            send: suspend (String, String?, String, List<AttachmentPart>) -> SendOutcome,
-            download: suspend (Long) -> Boolean = { false },
+            send: suspend (String, String) -> SendOutcome,
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -310,23 +212,14 @@ class ThreadViewModel(
                     recipient = recipient,
                     isSmsRoleHeld = isSmsRoleHeld,
                     send = send,
-                    download = download,
                 ) as T
         }
     }
 }
 
-private fun AttachmentEntity.toUi() = AttachmentUi(
-    id = id,
-    fileName = fileName,
-    contentType = contentType,
-    filePath = filePath,
-)
-
-private data class Quintuple<A, B, C, D, E>(
+private data class Quadruple<A, B, C, D>(
     val first: A,
     val second: B,
     val third: C,
     val fourth: D,
-    val fifth: E,
 )

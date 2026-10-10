@@ -1,8 +1,8 @@
 package com.oaktech.smsapp.ui
 
-import android.database.Cursor
+import android.content.ContentUris
 import android.net.Uri
-import android.provider.OpenableColumns
+import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,18 +27,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import kotlinx.coroutines.launch
 import com.oaktech.smsapp.contacts.ContactNameResolver
-import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.data.DataGraph
 import com.oaktech.smsapp.permission.PermissionSetup
 import com.oaktech.smsapp.permission.SmsPermissions
-import com.oaktech.smsapp.sms.mms.MmsAttachmentStore
-import com.oaktech.smsapp.sms.send.MmsSendGraph
+import com.oaktech.smsapp.sms.send.SendGraph
 import com.oaktech.smsapp.ui.compose.ComposeIntentParser
 import com.oaktech.smsapp.ui.compose.ComposeRoute
 import com.oaktech.smsapp.ui.compose.ComposeViewModel
 import com.oaktech.smsapp.ui.conversations.ConversationsRoute
 import com.oaktech.smsapp.ui.conversations.ConversationsViewModel
+import com.oaktech.smsapp.ui.drafts.DraftsRoute
+import com.oaktech.smsapp.ui.drafts.DraftsViewModel
 import com.oaktech.smsapp.ui.permission.PermissionGate
 import com.oaktech.smsapp.ui.permission.PermissionRevokedBanner
 import com.oaktech.smsapp.ui.permission.openAppSettings
@@ -52,6 +54,7 @@ import com.oaktech.smsapp.ui.thread.ThreadViewModel
 private object Routes {
     const val CONVERSATIONS = "conversations"
     const val SPAM = "spam"
+    const val DRAFTS = "drafts"
     const val THREAD = "thread/{conversationId}?recipient={recipient}"
     const val COMPOSE = "compose"
     const val SEARCH = "search"
@@ -69,6 +72,7 @@ fun SmsApp(
     val context = LocalContext.current
     val navController = rememberNavController()
     val roleState = rememberSmsRoleState()
+    val roleRequestScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // Re-read on every resume: the system can revoke SMS access when the role
@@ -117,7 +121,7 @@ fun SmsApp(
     // before drawing anything.
     val requestSmsRoleLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
-    ) { roleState.refresh() }
+    ) { roleRequestScope.launch { roleState.refreshAfterRequest() } }
 
     val requestSmsRole: () -> Unit = {
         roleState.requestIntent()?.let { intent ->
@@ -154,7 +158,7 @@ fun SmsApp(
 }
 
 /** A SENDTO request from another app, parsed into the composer. */
-data class ComposeRequest(val recipient: String, val body: String)
+data class ComposeRequest(val recipient: String, val body: String, val draftId: Long? = null)
 
 private tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
     is android.app.Activity -> this
@@ -172,13 +176,17 @@ private fun SmsNavHost(
     roleHeldNow: Boolean,
 ) {
     val context = LocalContext.current
+    val navigationScope = rememberCoroutineScope()
     val repository = DataGraph.get(context).messageRepository
     val contactNames = remember { ContactNameResolver(context) }
     // Pull in the provider's history once the role is held. Runs on every entry
     // rather than once per process: the role can be granted after launch, and
     // messages also arrive while another app holds the role.
     LaunchedEffect(roleHeldNow) {
-        if (roleHeldNow) DataGraph.get(context).providerImport.importIfPossible()
+        if (roleHeldNow) {
+            contactNames.preload()
+            DataGraph.get(context).providerImport.importIfPossible()
+        }
     }
 
     // A notification tap names a conversation id but not an address, so the
@@ -223,12 +231,14 @@ private fun SmsNavHost(
             )
             ConversationsRoute(
                 viewModel = viewModel,
+                roleHeldNow = roleHeldNow,
                 onOpenConversation = { row ->
                     navController.navigate(Routes.thread(row.id, row.address))
                 },
                 onRequestSmsRole = requestSmsRole,
                 onResume = viewModel::resolveContactNames,
                 onOpenSpam = { navController.navigate(Routes.SPAM) },
+                onOpenDrafts = { navController.navigate(Routes.DRAFTS) },
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 // Reached from the app's own floating action button, so unlike the
@@ -276,51 +286,49 @@ private fun SmsNavHost(
             // parameter, so the composer is populated even after a send has
             // already cleared the pending copy.
             val request = servedComposeRequest
+            var composeContactName by remember(request?.recipient) { mutableStateOf<String?>(null) }
+            LaunchedEffect(request?.recipient) {
+                composeContactName = request?.recipient?.let { contactNames.displayName(it) }
+            }
             val viewModel: ComposeViewModel = viewModel(
                 factory = ComposeViewModel.factory(
                     initialRecipient = request?.recipient.orEmpty(),
                     initialDraft = request?.body.orEmpty(),
                     isSmsRoleHeld = isSmsRoleHeld,
-                    send = { address, body, attachments ->
-                        // The quick compose screen has no subject field; the
-                        // thread composer is where an MMS subject is set.
-                        MmsSendGraph.sender(context).send(address, null, body, attachments)
+                    send = { address, body ->
+                        SendGraph.coordinator(context).send(address, body)
                     },
                 ),
             )
 
-            val attachmentLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.GetContent(),
+            val contactLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.PickContact(),
             ) { uri ->
                 uri ?: return@rememberLauncherForActivityResult
-                val resolver = context.contentResolver
-                val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
-                    ?: return@rememberLauncherForActivityResult
-                val fileName = queryDisplayName(resolver, uri) ?: "attachment"
-                val contentType = resolver.getType(uri) ?: "application/octet-stream"
-                val file = MmsAttachmentStore(context).store(bytes, fileName)
-                    ?: return@rememberLauncherForActivityResult
-                viewModel.queueAttachment(
-                    AttachmentPart(
-                        fileName = file.name,
-                        contentType = contentType,
-                        filePath = file.absolutePath,
-                        byteSize = file.length(),
-                    ),
-                )
+                queryContactPhoneNumber(context.contentResolver, uri)?.let(viewModel::addRecipient)
             }
             ComposeRoute(
                 viewModel = viewModel,
+                contactName = composeContactName,
                 onBack = {
-                    // A SENDTO caller expects this activity to finish. There is
-                    // no back stack to pop when the composer was the start
-                    // destination, so fall through to finishing the activity.
-                    if (!navController.popBackStack()) {
-                        navController.context.findActivity()?.finish()
+                    val composeState = viewModel.uiState.value
+                    navigationScope.launch {
+                        // Save before removing the compose destination: a
+                        // ViewModel-scoped write would be cancelled as soon as
+                        // this screen is popped.
+                        repository.saveDraftForRecipient(
+                            composeState.recipient,
+                            composeState.draft,
+                            request?.draftId,
+                        )
+                        servedComposeRequest = null
+                        if (!navController.popBackStack(Routes.CONVERSATIONS, false)) {
+                            navController.context.findActivity()?.finish()
+                        }
                     }
                 },
                 onRequestSmsRole = requestSmsRole,
-                onPickAttachment = { attachmentLauncher.launch("image/*") },
+                onPickContact = { contactLauncher.launch(null) },
                 isSmsRoleHeld = isSmsRoleHeld(),
             )
         }
@@ -336,6 +344,32 @@ private fun SmsNavHost(
                 viewModel = viewModel,
                 onOpenConversation = { row ->
                     navController.navigate(Routes.thread(row.id, row.address))
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(Routes.DRAFTS) {
+            val viewModel: DraftsViewModel = viewModel(
+                factory = DraftsViewModel.factory(repository, contactNames),
+            )
+            DraftsRoute(
+                viewModel = viewModel,
+                onOpenDraft = { row ->
+                    servedComposeRequest = ComposeRequest(
+                        recipient = row.address,
+                        body = row.snippet,
+                        draftId = row.id,
+                    )
+                    navController.navigate(Routes.COMPOSE)
+                },
+                onSendDraft = { row ->
+                    servedComposeRequest = ComposeRequest(
+                        recipient = row.address,
+                        body = row.snippet,
+                        draftId = row.id,
+                    )
+                    navController.navigate(Routes.COMPOSE)
                 },
                 onBack = { navController.popBackStack() },
             )
@@ -370,6 +404,10 @@ private fun SmsNavHost(
         ) { entry ->
             val conversationId = entry.arguments?.getLong("conversationId") ?: 0L
             val recipient = entry.arguments?.getString("recipient").orEmpty()
+            var threadContactName by remember(recipient) { mutableStateOf<String?>(null) }
+            LaunchedEffect(recipient) {
+                threadContactName = contactNames.displayName(recipient)
+            }
 
             val viewModel: ThreadViewModel = viewModel(
                 factory = ThreadViewModel.factory(
@@ -377,43 +415,17 @@ private fun SmsNavHost(
                     conversationId = conversationId,
                     recipient = recipient,
                     isSmsRoleHeld = isSmsRoleHeld,
-                    send = { address, subject, body, attachments ->
-                        MmsSendGraph.sender(context).send(address, subject, body, attachments)
-                    },
-                    download = { messageId ->
-                        MmsSendGraph.downloader(context).download(repository, messageId)
+                    send = { address, body ->
+                        SendGraph.coordinator(context).send(address, body)
                     },
                 ),
             )
 
-            // Picking an attachment copies the system's content URI into app
-            // storage first. The URI is a transient grant that the send worker
-            // could survive past, so the bytes are taken now, as a file, and the
-            // queue only ever holds stable paths.
-            val attachmentLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.GetContent(),
-            ) { uri ->
-                uri ?: return@rememberLauncherForActivityResult
-                val resolver = context.contentResolver
-                val bytes = runCatching { resolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
-                    ?: return@rememberLauncherForActivityResult
-                val fileName = queryDisplayName(resolver, uri) ?: "attachment"
-                val contentType = resolver.getType(uri) ?: "application/octet-stream"
-                val file = MmsAttachmentStore(context).store(bytes, fileName)
-                    ?: return@rememberLauncherForActivityResult
-                viewModel.queueAttachment(
-                    AttachmentPart(
-                        fileName = file.name,
-                        contentType = contentType,
-                        filePath = file.absolutePath,
-                        byteSize = file.length(),
-                    ),
-                )
-            }
-
             ThreadRoute(
                 viewModel = viewModel,
                 recipient = recipient,
+                contactName = threadContactName,
+                roleHeldNow = roleHeldNow,
                 onBack = { navController.popBackStack() },
                 onRequestSmsRole = requestSmsRole,
                 // Forward opens the composer with the body pre-filled and no
@@ -430,19 +442,32 @@ private fun SmsNavHost(
                     servedComposeRequest = ComposeRequest(recipient = number, body = "")
                     navController.navigate(Routes.COMPOSE)
                 },
-                onPickAttachment = { attachmentLauncher.launch("image/*") },
             )
         }
     }
 }
 
-/** Resolves the display name Android keeps for a picked `content://` file. */
-private fun queryDisplayName(resolver: android.content.ContentResolver, uri: Uri): String? {
-    resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor: Cursor ->
-        val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-        if (cursor.moveToFirst() && column >= 0 && !cursor.isNull(column)) {
-            return cursor.getString(column)
+/** Reads the first phone number for a contact selected from the system picker. */
+private fun queryContactPhoneNumber(
+    resolver: android.content.ContentResolver,
+    contactUri: Uri,
+): String? {
+    val contactId = runCatching { ContentUris.parseId(contactUri) }.getOrNull() ?: return null
+    val projection = arrayOf(ContactsContract.CommonDataKinds.Phone.NUMBER)
+    return runCatching {
+        resolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            projection,
+            "${ContactsContract.CommonDataKinds.Phone.CONTACT_ID} = ?",
+            arrayOf(contactId.toString()),
+            "${ContactsContract.CommonDataKinds.Phone.IS_PRIMARY} DESC",
+        )?.use { cursor ->
+            val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            if (numberIndex >= 0 && cursor.moveToFirst() && !cursor.isNull(numberIndex)) {
+                cursor.getString(numberIndex)
+            } else {
+                null
+            }
         }
-    }
-    return null
+    }.getOrNull()?.trim()?.takeIf { it.isNotEmpty() }
 }

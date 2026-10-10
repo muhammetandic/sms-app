@@ -41,7 +41,6 @@ class SmsReceiveWorkerTest {
             database.conversationDao(),
             database.messageDao(),
             database.draftDao(),
-            database.attachmentDao(),
             writer,
         )
         DataGraph.overrideForTest(context, repository)

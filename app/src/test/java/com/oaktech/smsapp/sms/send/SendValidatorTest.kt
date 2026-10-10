@@ -98,13 +98,6 @@ class SendValidatorTest {
     }
 
     @Test
-    fun `blank body is permitted when message has attachments`() {
-        val result = SendValidator.validate("+15551234567", "   ", hasAttachments = true)
-
-        assertEquals(SendValidator.Result.Valid, result)
-    }
-
-    @Test
     fun `comma separated recipients are all validated`() {
         assertEquals(
             SendValidator.Result.Valid,

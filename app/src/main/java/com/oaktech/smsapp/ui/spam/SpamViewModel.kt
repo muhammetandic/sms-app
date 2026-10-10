@@ -55,6 +55,7 @@ class SpamViewModel(
         if (!resolver.hasPermission()) return
 
         viewModelScope.launch {
+            resolver.preload()
             val summaries = repository.observeSpamConversations().first()
             resolvedNames.value = summaries.associate { summary ->
                 summary.addressKey to resolver.displayName(summary.displayAddress)

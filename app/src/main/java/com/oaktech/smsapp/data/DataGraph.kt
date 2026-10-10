@@ -22,7 +22,6 @@ class DataGraph private constructor(
         conversationDao = database.conversationDao(),
         messageDao = database.messageDao(),
         draftDao = database.draftDao(),
-        attachmentDao = database.attachmentDao(),
         telephonyWriter = PlatformTelephonyMessageWriter(context),
     )
 

@@ -1,14 +1,17 @@
 package com.oaktech.smsapp.ui.compose
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -24,7 +27,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -43,8 +45,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.oaktech.smsapp.R
 import com.oaktech.smsapp.sms.send.SendValidator
 import com.oaktech.smsapp.ui.components.ReadOnlyBanner
-import com.oaktech.smsapp.ui.thread.AttachmentChip
-import com.oaktech.smsapp.ui.thread.ThreadTestTags
 
 class ComposeTestTags {
     companion object {
@@ -57,13 +57,18 @@ class ComposeTestTags {
 @Composable
 fun ComposeRoute(
     viewModel: ComposeViewModel,
+    contactName: String? = null,
     onBack: () -> Unit,
     onRequestSmsRole: () -> Unit,
-    onPickAttachment: () -> Unit,
     isSmsRoleHeld: Boolean,
+    onPickContact: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // The system Back gesture/key must use the same path as the app-bar arrow,
+    // otherwise the NavHost pops the destination before its draft is saved.
+    BackHandler(enabled = !state.isSending, onBack = onBack)
 
     val errorText = state.error?.let { composeErrorText(it) }
     LaunchedEffect(state.error) {
@@ -81,15 +86,15 @@ fun ComposeRoute(
 
     ComposeScreen(
         state = state,
+        contactName = contactName,
         snackbarHostState = snackbarHostState,
         isSmsRoleHeld = isSmsRoleHeld,
         onBack = onBack,
         onRecipientChanged = viewModel::onRecipientChanged,
         onDraftChanged = viewModel::onDraftChanged,
         onSend = viewModel::onSend,
-        onPickAttachment = onPickAttachment,
-        onRemoveAttachment = viewModel::removeAttachment,
         onRequestSmsRole = onRequestSmsRole,
+        onPickContact = onPickContact,
     )
 }
 
@@ -97,15 +102,15 @@ fun ComposeRoute(
 @Composable
 fun ComposeScreen(
     state: ComposeUiState,
+    contactName: String? = null,
     snackbarHostState: SnackbarHostState,
     isSmsRoleHeld: Boolean,
     onBack: () -> Unit,
     onRecipientChanged: (String) -> Unit,
     onDraftChanged: (String) -> Unit,
     onSend: () -> Unit,
-    onPickAttachment: () -> Unit,
-    onRemoveAttachment: (String) -> Unit,
     onRequestSmsRole: () -> Unit,
+    onPickContact: () -> Unit,
 ) {
     val backLabel = stringResource(R.string.thread_back)
 
@@ -134,19 +139,37 @@ fun ComposeScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .imePadding()
+                .navigationBarsPadding()
                 .padding(16.dp),
-            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             if (!isSmsRoleHeld) {
                 ReadOnlyBanner(onAction = onRequestSmsRole)
             }
 
             val recipientLabel = stringResource(R.string.compose_recipient_label)
+            val shownContactName = contactName?.takeIf { !state.recipient.contains(',') }
             OutlinedTextField(
-                value = state.recipient,
+                // Keep the address in the ViewModel for sending, but show the
+                // contact's display name when this recipient came from a
+                // contact-aware SENDTO launch.
+                value = shownContactName ?: state.recipient,
                 onValueChange = onRecipientChanged,
                 label = { Text(stringResource(R.string.compose_recipient_hint)) },
+                trailingIcon = {
+                    IconButton(
+                        onClick = onPickContact,
+                        enabled = !state.isSending,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = stringResource(R.string.compose_pick_contact),
+                        )
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
                 singleLine = true,
+                readOnly = shownContactName != null,
                 enabled = !state.isSending,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -159,6 +182,7 @@ fun ComposeScreen(
                 value = state.draft,
                 onValueChange = onDraftChanged,
                 label = { Text(stringResource(R.string.thread_draft_hint)) },
+                shape = RoundedCornerShape(12.dp),
                 maxLines = 8,
                 enabled = !state.isSending,
                 modifier = Modifier
@@ -167,35 +191,11 @@ fun ComposeScreen(
                     .semantics { contentDescription = draftLabel },
             )
 
-            if (state.attachments.isNotEmpty()) {
-                val removeLabel = stringResource(R.string.thread_remove_attachment)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    state.attachments.forEach { attachment ->
-                        AttachmentChip(
-                            fileName = attachment.fileName ?: "attachment",
-                            onRemove = { onRemoveAttachment(attachment.filePath.orEmpty()) },
-                            removeLabel = removeLabel,
-                        )
-                    }
-                }
-            }
-
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                val attachLabel = stringResource(R.string.thread_attach)
-                IconButton(
-                    onClick = onPickAttachment,
-                    enabled = !state.isSending,
-                    modifier = Modifier.semantics { contentDescription = attachLabel },
-                ) {
-                    Icon(imageVector = Icons.Filled.Add, contentDescription = null)
-                }
                 Spacer(modifier = Modifier.weight(1f))
                 val sendLabel = stringResource(R.string.thread_send)
                 Button(
@@ -223,6 +223,7 @@ fun ComposeScreen(
         }
     }
 }
+
 /**
  * The (translatable) wording for a compose error, chosen here rather than in
  * the ViewModel so the state stays free of English text.

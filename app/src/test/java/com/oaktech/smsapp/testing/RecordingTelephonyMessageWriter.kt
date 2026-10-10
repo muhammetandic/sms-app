@@ -1,6 +1,5 @@
 package com.oaktech.smsapp.testing
 
-import com.oaktech.smsapp.data.telephony.ProviderMms
 import com.oaktech.smsapp.data.telephony.ProviderRowRef
 import com.oaktech.smsapp.data.telephony.TelephonyMessageWriter
 import com.oaktech.smsapp.sms.receive.InboundMessage
@@ -23,8 +22,6 @@ class RecordingTelephonyMessageWriter : TelephonyMessageWriter {
     val markedUnread = mutableListOf<ProviderRowRef>()
     val insertedInbound = mutableListOf<InboundMessage>()
     val insertedSent = mutableListOf<SentRow>()
-    val insertedInboundMms = mutableListOf<ProviderMms>()
-    val insertedSentMms = mutableListOf<ProviderMms>()
     val markedFailed = mutableListOf<ProviderRowRef>()
 
     var refuseInserts = false
@@ -52,18 +49,6 @@ class RecordingTelephonyMessageWriter : TelephonyMessageWriter {
     override suspend fun insertSent(address: String, body: String, sentAt: Long): Long? {
         if (refuseInserts) return null
         insertedSent += SentRow(address, body, sentAt)
-        return nextId++
-    }
-
-    override suspend fun insertInboundMms(message: ProviderMms): Long? {
-        if (refuseInserts) return null
-        insertedInboundMms += message
-        return nextId++
-    }
-
-    override suspend fun insertSentMms(message: ProviderMms): Long? {
-        if (refuseInserts) return null
-        insertedSentMms += message
         return nextId++
     }
 

@@ -56,7 +56,7 @@ class NotificationActionReceiverTest {
             .setTransactionExecutor(DirectExecutor)
             .allowMainThreadQueries()
             .build()
-        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao(), database.attachmentDao())
+        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao())
         // The graph is a singleton, so the receiver under test has to be pointed
         // at this store rather than left to resolve the real on-device one.
         DataGraph.overrideForTest(context, repository)

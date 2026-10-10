@@ -33,6 +33,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,15 +61,19 @@ import com.oaktech.smsapp.ui.components.ReadOnlyBanner
 @Composable
 fun ConversationsRoute(
     viewModel: ConversationsViewModel,
+    roleHeldNow: Boolean,
     onOpenConversation: (ConversationRow) -> Unit,
     onRequestSmsRole: () -> Unit,
     onResume: () -> Unit,
     onOpenSpam: () -> Unit,
+    onOpenDrafts: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     onCompose: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LaunchedEffect(roleHeldNow) { viewModel.refreshRole() }
 
     // Contact names are resolved per address off the Room flow, so they cannot
     // be part of the query. Re-resolved on resume because a name can be added to
@@ -92,6 +97,7 @@ fun ConversationsRoute(
         onOpenConversation = onOpenConversation,
         onRequestSmsRole = onRequestSmsRole,
         onOpenSpam = onOpenSpam,
+        onOpenDrafts = onOpenDrafts,
         onOpenSearch = onOpenSearch,
         onOpenSettings = onOpenSettings,
         onCompose = onCompose,
@@ -109,6 +115,7 @@ fun ConversationsScreen(
     onOpenConversation: (ConversationRow) -> Unit,
     onRequestSmsRole: () -> Unit,
     onOpenSpam: () -> Unit,
+    onOpenDrafts: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     onCompose: () -> Unit,
@@ -211,6 +218,12 @@ fun ConversationsScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_spam),
                                 contentDescription = stringResource(R.string.spam_open),
+                            )
+                        }
+                        IconButton(onClick = onOpenDrafts) {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_action_unread),
+                                contentDescription = stringResource(R.string.drafts_open),
                             )
                         }
                         IconButton(onClick = onOpenSettings) {

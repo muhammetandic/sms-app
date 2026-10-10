@@ -128,16 +128,6 @@ class ProviderMessageMapperTest {
     }
 
     @Test
-    fun `an mms row gets its own dedupe namespace`() {
-        // SMS and MMS each number their rows from 1, so without a namespace an
-        // outgoing MMS id 7 would silently collide with SMS id 7 and never store.
-        val key = ProviderMessageMapper.dedupeKey(7L, mms = true)
-
-        assertEquals("provider:mms:7", key)
-        assertNotEquals(ProviderMessageMapper.dedupeKey(7L), key)
-    }
-
-    @Test
     fun `different provider ids produce different dedupe keys`() {
         assertNotEquals(
             ProviderMessageMapper.dedupeKey(1L),

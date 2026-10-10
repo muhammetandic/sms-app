@@ -37,7 +37,7 @@ class ProviderImportTest {
             ApplicationProvider.getApplicationContext(),
             SmsDatabase::class.java,
         )
-        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao(), database.attachmentDao())
+        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao())
     }
 
     @After
@@ -59,14 +59,6 @@ class ProviderImportTest {
         status = SmsProviderTypes.STATUS_NONE,
         read = true,
     )
-
-    private fun providerMms(
-        id: Long,
-        address: String = "+15551234567",
-        body: String = "old mms",
-        date: Long = 1_000L,
-        type: Int = SmsProviderTypes.MESSAGE_TYPE_INBOX,
-    ) = providerMessage(id = id, address = address, body = body, date = date, type = type).copy(mms = true)
 
     @Test
     fun `imported messages land in the local store`() = runTest(mainDispatcherRule.testDispatcher) {
@@ -163,62 +155,6 @@ class ProviderImportTest {
         val message = repository.observeMessages(conversationId).first().single()
 
         assertEquals(MessageDirection.OUTGOING, message.direction)
-    }
-
-    @Test
-    fun `an mms row imports under its own dedupe namespace`() = runTest(mainDispatcherRule.testDispatcher) {
-        // SMS and MMS rows share id sequences, so an outbound MMS id 1 must not
-        // collide with an outbound SMS id 1 that was already imported.
-        repository.importFromProvider(
-            listOf(providerMessage(1L, type = SmsProviderTypes.MESSAGE_TYPE_SENT)),
-        )
-        val inserted = repository.importFromProvider(
-            listOf(providerMms(1L, type = SmsProviderTypes.MESSAGE_TYPE_SENT, body = "hi")),
-        )
-
-        assertEquals(1, inserted)
-        val conversation = repository.observeConversations().first().single()
-        assertEquals(2, repository.observeMessages(conversation.id).first().size)
-    }
-
-    @Test
-    fun `re-importing the same mms adds nothing`() = runTest(mainDispatcherRule.testDispatcher) {
-        val messages = listOf(providerMms(1L), providerMms(2L, body = "another"))
-        assertEquals(2, repository.importFromProvider(messages))
-
-        assertEquals(0, repository.importFromProvider(messages))
-        val conversation = repository.observeConversations().first().single()
-        assertEquals(2, repository.observeMessages(conversation.id).first().size)
-    }
-
-    @Test
-    fun `an identical sms and mms are not mistaken for one another`() =
-        runTest(mainDispatcherRule.testDispatcher) {
-            // Same sender, same date, same text: the only difference is which
-            // table the row came from. Without a namespace the MMS is treated as
-            // a duplicate of the SMS and silently dropped from history.
-            repository.importFromProvider(
-                listOf(
-                    providerMessage(1L, body = "look at this"),
-                    providerMms(2L, body = "look at this"),
-                ),
-            )
-
-            val conversation = repository.observeConversations().first().single()
-            assertEquals(2, repository.observeMessages(conversation.id).first().size)
-        }
-
-    @Test
-    fun `an outbound mms row is stored as outgoing`() = runTest(mainDispatcherRule.testDispatcher) {
-        repository.importFromProvider(
-            listOf(providerMms(1L, type = SmsProviderTypes.MESSAGE_TYPE_SENT)),
-        )
-
-        val conversationId = repository.conversationIdFor("+15551234567")!!
-        val message = repository.observeMessages(conversationId).first().single()
-
-        assertEquals(MessageDirection.OUTGOING, message.direction)
-        assertTrue(message.isMms)
     }
 
     @Test

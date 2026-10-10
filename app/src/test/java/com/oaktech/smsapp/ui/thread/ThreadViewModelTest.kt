@@ -1,9 +1,7 @@
 package com.oaktech.smsapp.ui.thread
 
 import androidx.test.core.app.ApplicationProvider
-import com.oaktech.smsapp.data.AttachmentPart
 import com.oaktech.smsapp.data.MessageRepository
-import com.oaktech.smsapp.data.local.DownloadState
 import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.data.local.SmsDatabase
 import com.oaktech.smsapp.sms.receive.InboundMessage
@@ -17,7 +15,6 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -43,7 +40,7 @@ class ThreadViewModelTest {
             ApplicationProvider.getApplicationContext(),
             SmsDatabase::class.java,
         )
-        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao(), database.attachmentDao())
+        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao())
     }
 
     @After
@@ -65,10 +62,9 @@ class ThreadViewModelTest {
     private fun viewModel(
         conversationId: Long,
         roleHeld: () -> Boolean = { true },
-        send: suspend (String, String?, String, List<AttachmentPart>) -> SendOutcome = { _, _, _, _ ->
+        send: suspend (String, String) -> SendOutcome = { _, _ ->
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
         },
-        download: suspend (Long) -> Boolean = { false },
         threadRecipient: String = recipient,
     ) = ThreadViewModel(
         repository = repository,
@@ -76,7 +72,6 @@ class ThreadViewModelTest {
         recipient = threadRecipient,
         isSmsRoleHeld = roleHeld,
         send = send,
-        download = download,
     )
 
     private suspend fun ThreadViewModel.awaitLoaded() = uiState.first { it.messages.isNotEmpty() }
@@ -125,7 +120,7 @@ class ThreadViewModelTest {
         val conversationId = givenInbound("hi", 1_000L)
         var sentBody: String? = null
         var sentTo: String? = null
-        val model = viewModel(conversationId, send = { to, _, body, _ ->
+        val model = viewModel(conversationId, send = { to, body ->
             sentTo = to
             sentBody = body
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
@@ -142,7 +137,7 @@ class ThreadViewModelTest {
     fun `a blank draft is never sent`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
         var sendCount = 0
-        val model = viewModel(conversationId, send = { _, _, _, _ ->
+        val model = viewModel(conversationId, send = { _, _ ->
             sendCount += 1
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
         })
@@ -157,7 +152,7 @@ class ThreadViewModelTest {
     @Test
     fun `a failed send surfaces an error and can be dismissed`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId, send = { _, _, _, _ ->
+        val model = viewModel(conversationId, send = { _, _ ->
             SendOutcome(SendState.FAILED, 1, 1, ResultCode.RADIO_OFF)
         })
         model.awaitLoaded()
@@ -193,7 +188,7 @@ class ThreadViewModelTest {
         val model = viewModel(
             conversationId,
             threadRecipient = "",
-            send = { _, _, _, _ ->
+            send = { _, _ ->
                 sendCount += 1
                 SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
             },
@@ -210,7 +205,7 @@ class ThreadViewModelTest {
     @Test
     fun `a sent message appears in the thread with its status`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId, send = { address, _, body, _ ->
+        val model = viewModel(conversationId, send = { address, body ->
             val id = repository.recordOutgoing(address, body, 5_000L)
             repository.updateOutgoingStatus(id, MessageStatus.SENT)
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
@@ -228,7 +223,7 @@ class ThreadViewModelTest {
     @Test
     fun `a failed message keeps its failed status in the thread`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId, send = { address, _, body, _ ->
+        val model = viewModel(conversationId, send = { address, body ->
             val id = repository.recordOutgoing(address, body, 5_000L)
             repository.updateOutgoingStatus(id, MessageStatus.FAILED)
             SendOutcome(SendState.FAILED, 1, 1, ResultCode.RADIO_OFF)
@@ -313,7 +308,7 @@ class ThreadViewModelTest {
     fun `resending a failed message composes the text again`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
         var sentBody: String? = null
-        val model = viewModel(conversationId, send = { address, _, body, _ ->
+        val model = viewModel(conversationId, send = { address, body ->
             sentBody = body
             val id = repository.recordOutgoing(address, body, 5_000L)
             repository.updateOutgoingStatus(id, MessageStatus.SENT)
@@ -333,7 +328,7 @@ class ThreadViewModelTest {
     fun `resending a non-failed message does nothing`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
         var sendCount = 0
-        val model = viewModel(conversationId, send = { _, _, _, _ ->
+        val model = viewModel(conversationId, send = { _, _ ->
             sendCount += 1
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
         })
@@ -345,172 +340,5 @@ class ThreadViewModelTest {
 
         assertEquals(0, sendCount)
         assertEquals("already out", model.uiState.value.messages.single { it.id == sentId }.body)
-    }
-
-    @Test
-    fun `queued attachments ride along on the send`() = runTest(mainDispatcherRule.testDispatcher) {
-        val conversationId = givenInbound("hi", 1_000L)
-        var sentAttachments: List<AttachmentPart>? = null
-        val model = viewModel(conversationId, send = { _, _, body, attachments ->
-            sentAttachments = attachments
-            val outcome = if (attachments.isEmpty()) {
-                SendOutcome(SendState.FAILED, 1, 1, ResultCode.GENERIC_FAILURE)
-            } else {
-                SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
-            }
-            outcome
-        })
-        model.awaitLoaded()
-
-        val part = AttachmentPart(fileName = "pic.jpg", contentType = "image/jpeg", filePath = "/tmp/pic.jpg", byteSize = 10)
-        model.queueAttachment(part)
-        model.onDraftSubmitted("with a photo")
-
-        assertNotNull(sentAttachments)
-        assertEquals(listOf(part.filePath), sentAttachments?.map { it.filePath })
-        assertTrue(model.uiState.value.pendingAttachments.isEmpty())
-    }
-
-    @Test
-    fun `a failed send keeps the attachment queue for retry`() = runTest(mainDispatcherRule.testDispatcher) {
-        val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId, send = { _, _, _, _ ->
-            SendOutcome(SendState.FAILED, 1, 1, ResultCode.MMS_SEND_FAILED)
-        })
-        model.awaitLoaded()
-
-        model.queueAttachment(
-            AttachmentPart(fileName = "a.jpg", contentType = "image/jpeg", filePath = "/tmp/a.jpg", byteSize = 1),
-        )
-        model.onDraftSubmitted("retry me")
-
-        assertEquals(1, model.uiState.value.pendingAttachments.size)
-    }
-
-    @Test
-    fun `an attachment with no file is ignored`() = runTest(mainDispatcherRule.testDispatcher) {
-        val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId)
-        model.awaitLoaded()
-
-        model.queueAttachment(
-            AttachmentPart(fileName = "x.jpg", contentType = "image/jpeg", filePath = null, byteSize = 1),
-        )
-
-        assertTrue(model.uiState.value.pendingAttachments.isEmpty())
-    }
-
-    @Test
-    fun `picked attachments are restored when the thread reopens`() = runTest(mainDispatcherRule.testDispatcher) {
-        val conversationId = givenInbound("hi", 1_000L)
-        val part = AttachmentPart(fileName = "pic.jpg", contentType = "image/jpeg", filePath = "/tmp/pic.jpg", byteSize = 10)
-        val model = viewModel(conversationId)
-        model.awaitLoaded()
-        model.queueAttachment(part)
-        repository.observePendingAttachments(conversationId).first { it.isNotEmpty() }
-
-        val reopened = viewModel(conversationId)
-        reopened.awaitLoaded()
-
-        assertEquals(
-            listOf(part),
-            reopened.uiState.first { it.pendingAttachments.isNotEmpty() }.pendingAttachments,
-        )
-    }
-
-    @Test
-    fun `a successful send clears the persisted attachment queue`() = runTest(mainDispatcherRule.testDispatcher) {
-        val conversationId = givenInbound("hi", 1_000L)
-        val model = viewModel(conversationId)
-        model.awaitLoaded()
-        val part = AttachmentPart(fileName = "pic.jpg", contentType = "image/jpeg", filePath = "/tmp/pic.jpg", byteSize = 10)
-        model.queueAttachment(part)
-        repository.observePendingAttachments(conversationId).first { it.isNotEmpty() }
-
-        model.onDraftSubmitted("with photo")
-
-        repository.observePendingAttachments(conversationId).first { it.isEmpty() }
-        assertTrue(model.uiState.value.pendingAttachments.isEmpty())
-    }
-
-    @Test
-    fun `an inbound mms without attachments can be downloaded`() = runTest(mainDispatcherRule.testDispatcher) {
-        val conversationId = givenInbound("hi", 1_000L)
-        val messageId = repository.recordInboundMms(
-            address = recipient,
-            body = "multimedia",
-            subject = null,
-            timestampMillis = 1_000L,
-            transactionId = "t1",
-            attachments = emptyList(),
-            downloadState = DownloadState.PENDING,
-        )
-        requireNotNull(messageId)
-        var downloaded = 0
-        val model = viewModel(conversationId, download = {
-            downloaded += 1
-            true
-        })
-        model.awaitLoaded()
-
-        val bubble = model.uiState.first { it.messages.any { m -> m.id == messageId } }
-            .messages.single { it.id == messageId }
-        assertTrue(bubble.needsDownload)
-
-        model.downloadAttachment(messageId)
-
-        assertEquals(1, downloaded)
-    }
-
-    @Test
-    fun `an inbound text-only mms has no download action`() = runTest(mainDispatcherRule.testDispatcher) {
-        val messageId = repository.recordInboundMms(
-            address = recipient,
-            body = "text only",
-            subject = null,
-            timestampMillis = 1_000L,
-            transactionId = "t2",
-            attachments = emptyList(),
-            downloadState = DownloadState.NONE,
-        )
-        requireNotNull(messageId)
-        val model = viewModel(requireNotNull(repository.conversationIdFor(recipient)))
-        model.awaitLoaded()
-
-        val bubble = model.uiState.first { it.messages.any { m -> m.id == messageId } }
-            .messages.single { it.id == messageId }
-        assertFalse(bubble.needsDownload)
-    }
-
-    @Test
-    fun `an mms resend re-attaches its stored parts`() = runTest(mainDispatcherRule.testDispatcher) {
-        val conversationId = givenInbound("hi", 1_000L)
-        var sentWith: List<AttachmentPart>? = null
-        var sentSubject: String? = null
-        val model = viewModel(conversationId, send = { _, subject, _, attachments ->
-            sentSubject = subject
-            sentWith = attachments
-            repository.recordOutgoing(recipient, "resent", 5_000L).let { repository.updateOutgoingStatus(it, MessageStatus.SENT) }
-            SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
-        })
-        model.awaitLoaded()
-
-        val storedMessage = repository.recordOutgoingMms(
-            recipients = listOf(recipient),
-            subject = "subj",
-            body = "resend me",
-            sentAt = 4_000L,
-            attachments = emptyList(),
-        )
-        repository.updateOutgoingStatus(storedMessage, MessageStatus.FAILED)
-        repository.addAttachment(
-            storedMessage,
-            AttachmentPart(fileName = "k.jpg", contentType = "image/jpeg", filePath = "/tmp/k.jpg", byteSize = 5),
-        )
-
-        model.resendMessage(storedMessage)
-
-        assertEquals(listOf("/tmp/k.jpg"), sentWith?.map { it.filePath })
-        assertEquals("subj", sentSubject)
     }
 }

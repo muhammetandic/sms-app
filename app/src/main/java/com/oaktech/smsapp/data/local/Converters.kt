@@ -28,18 +28,4 @@ class Converters {
     @TypeConverter
     fun toStatus(value: String): MessageStatus =
         runCatching { MessageStatus.valueOf(value) }.getOrDefault(MessageStatus.SENT)
-
-    @TypeConverter
-    fun fromAttachmentState(state: AttachmentState): String = state.name
-
-    @TypeConverter
-    fun toAttachmentState(value: String): AttachmentState =
-        runCatching { AttachmentState.valueOf(value) }.getOrDefault(AttachmentState.RETRIEVABLE)
-
-    @TypeConverter
-    fun fromDownloadState(state: DownloadState): String = state.name
-
-    @TypeConverter
-    fun toDownloadState(value: String): DownloadState =
-        runCatching { DownloadState.valueOf(value) }.getOrDefault(DownloadState.NONE)
 }

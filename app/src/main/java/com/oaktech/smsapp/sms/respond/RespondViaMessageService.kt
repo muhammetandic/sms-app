@@ -5,7 +5,7 @@ import android.content.Intent
 import android.os.IBinder
 import android.util.Log
 import com.oaktech.smsapp.sms.receive.LogTags
-import com.oaktech.smsapp.sms.send.MmsSendGraph
+import com.oaktech.smsapp.sms.send.SendGraph
 import com.oaktech.smsapp.ui.compose.ComposeIntentParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
@@ -49,7 +49,7 @@ class RespondViaMessageService : Service() {
                 stopSelf(startId)
             }
 
-            else -> sendReply(recipients.joinToString(", "), body, startId)
+            else -> sendReply(recipients.first(), body, startId)
         }
 
         return START_NOT_STICKY
@@ -58,10 +58,7 @@ class RespondViaMessageService : Service() {
     private fun sendReply(recipient: String, body: String, startId: Int) {
         scope.launch {
             try {
-                // The routing sender splits a comma-joined group into its
-                // members and sends over MMS, exactly as the composer would;
-                // a single recipient stays on SMS.
-                MmsSendGraph.sender(applicationContext).send(recipient, null, body, emptyList())
+                SendGraph.coordinator(applicationContext).send(recipient, body)
             } catch (t: Throwable) {
                 Log.e(LogTags.SEND, "Reply from RESPOND_VIA_MESSAGE failed", t)
             } finally {

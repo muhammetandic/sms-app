@@ -46,7 +46,7 @@ class SpamRepositoryTest {
             .setTransactionExecutor(DirectExecutor)
             .allowMainThreadQueries()
             .build()
-        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao(), database.attachmentDao())
+        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao())
     }
 
     @After

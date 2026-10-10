@@ -25,6 +25,8 @@ class PlatformSmsTransport(
 
     private val appContext = context.applicationContext
 
+    override fun canSend(): Boolean = hasSendPermission()
+
     override fun divideMessage(body: String): List<String> = smsManager().divideMessage(body).toList()
 
     @SuppressLint("MissingPermission")
@@ -38,7 +40,7 @@ class PlatformSmsTransport(
 
         if (!hasSendPermission()) {
             Log.e(LogTags.SEND, "SEND_SMS is not granted; refusing to send to $destination")
-            return
+            throw SecurityException("SEND_SMS is not granted")
         }
 
         val manager = smsManager()

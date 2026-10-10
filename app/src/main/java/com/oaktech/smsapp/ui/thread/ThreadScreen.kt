@@ -1,12 +1,7 @@
 package com.oaktech.smsapp.ui.thread
 
-import android.content.Context
 import android.content.Intent
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.core.content.FileProvider
-import java.io.File
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,27 +11,23 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -64,8 +55,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -83,16 +72,12 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.oaktech.smsapp.R
-import com.oaktech.smsapp.data.AttachmentPart
-import com.oaktech.smsapp.data.local.AddressNormalizer
 import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.sms.send.ResultCode
 import com.oaktech.smsapp.sms.send.SmsSegments
 import com.oaktech.smsapp.ui.TimeFormat
 import com.oaktech.smsapp.ui.components.LinkifiedText
 import com.oaktech.smsapp.ui.components.ReadOnlyBanner
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
 
 class ThreadTestTags {
     companion object {
@@ -100,135 +85,26 @@ class ThreadTestTags {
         const val SEND_BUTTON = "thread_send_button"
         const val COMPOSER = "thread_composer"
         const val MESSAGE_LIST = "thread_message_list"
-        const val DOWNLOAD_BUTTON = "thread_download_button"
         const val SEGMENT_COUNTER = "thread_segment_counter"
-        const val SUBJECT_FIELD = "thread_subject_field"
-        const val IMAGE_ATTACHMENT = "thread_image_attachment"
     }
-}
-
-/**
- * An image attachment is the message, so it is shown inline instead of as a
- * filename row. Anything else, and any image whose bytes are not on disk yet
- * (a RETRIEVABLE part has no path until the user downloads it), stays a row.
- */
-@Composable
-private fun AttachmentPreview(attachment: AttachmentUi) {
-    val filePath = attachment.filePath
-    val isImage = attachment.contentType?.startsWith("image/") == true
-    if (filePath != null && isImage) {
-        AttachmentImage(attachment = attachment, filePath = filePath)
-    } else {
-        AttachmentRow(attachment = attachment)
-    }
-}
-
-/**
- * The tap target matches the row's: share the original file. A file that fails
- * to decode (corrupt, or swept from disk) falls back to the filename row rather
- * than leaving an empty gap in the bubble.
- */
-@Composable
-private fun AttachmentImage(attachment: AttachmentUi, filePath: String) {
-    val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
-    var failed by remember(filePath) { mutableStateOf(false) }
-    if (failed) {
-        AttachmentRow(attachment = attachment)
-        return
-    }
-
-    AsyncImage(
-        model = ImageRequest.Builder(context).data(File(filePath)).crossfade(true).build(),
-        contentDescription = attachment.fileName,
-        contentScale = ContentScale.Fit,
-        onError = { failed = true },
-        modifier = Modifier
-            .padding(bottom = 6.dp)
-            .widthIn(max = 240.dp)
-            .heightIn(max = 240.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .testTag(ThreadTestTags.IMAGE_ATTACHMENT)
-            .clickable {
-                launcher.launch(shareAttachmentIntent(context, filePath, attachment.contentType, attachment.fileName))
-            },
-    )
-}
-
-/** Sends an attachment through the system share sheet via the FileProvider. */
-@Composable
-private fun AttachmentRow(attachment: AttachmentUi) {
-    val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 6.dp)
-            .clickable(enabled = attachment.filePath != null) {
-                val path = attachment.filePath ?: return@clickable
-                launcher.launch(shareAttachmentIntent(context, path, attachment.contentType, attachment.fileName))
-            },
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                painter = painterResource(R.drawable.ic_action_download),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-            )
-            Text(
-                text = attachment.fileName ?: "attachment",
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            Icon(
-                imageVector = Icons.Filled.Share,
-                contentDescription = stringResource(R.string.thread_share_attachment),
-                modifier = Modifier.size(16.dp),
-            )
-        }
-    }
-}
-
-private fun shareAttachmentIntent(
-    context: Context,
-    filePath: String,
-    contentType: String?,
-    fileName: String?,
-): Intent {
-    val uri = FileProvider.getUriForFile(context, context.packageName + ".files", File(filePath))
-    val send = Intent(Intent.ACTION_SEND).apply {
-        type = contentType ?: "application/octet-stream"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        putExtra(Intent.EXTRA_TITLE, fileName ?: "attachment")
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    return Intent.createChooser(send, fileName ?: "attachment")
 }
 
 @Composable
 fun ThreadRoute(
     viewModel: ThreadViewModel,
     recipient: String,
+    contactName: String? = null,
+    roleHeldNow: Boolean,
     onBack: () -> Unit,
     onRequestSmsRole: () -> Unit,
     onForward: (String) -> Unit,
-    onPickAttachment: () -> Unit,
     onMessageNumber: (String) -> Unit = {},
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val sendFailedMessage = stringResource(R.string.thread_send_failed)
-    val mmsNetworkFailedMessage = stringResource(R.string.thread_mms_network_failed)
-    val downloadFailedMessage = stringResource(R.string.thread_download_failed)
+
+    LaunchedEffect(roleHeldNow) { viewModel.refreshRole() }
 
     // The role can be revoked from system settings while this screen sits in
     // the back stack, and both the read-only banner and the composer's enabled
@@ -250,9 +126,6 @@ fun ThreadRoute(
     // field while the user is typing.
     val persistedDraft by viewModel.draft.collectAsStateWithLifecycle()
     var draftText by rememberSaveable { mutableStateOf("") }
-    // The subject only exists on the MMS leg, so it is not stored with the
-    // draft; it lives with the other composer state and clears on send.
-    var subjectText by rememberSaveable { mutableStateOf("") }
     var draftSeeded by remember { mutableStateOf(false) }
     LaunchedEffect(persistedDraft) {
         if (!draftSeeded) {
@@ -262,14 +135,8 @@ fun ThreadRoute(
     }
 
     LaunchedEffect(state.lastFailure) {
-        state.lastFailure?.let { failure ->
-            snackbarHostState.showSnackbar(
-                when (failure) {
-                    ThreadFailure.SEND -> sendFailedMessage
-                    ThreadFailure.MMS_NETWORK -> mmsNetworkFailedMessage
-                    ThreadFailure.DOWNLOAD -> downloadFailedMessage
-                },
-            )
+        state.lastFailure?.let {
+            snackbarHostState.showSnackbar(sendFailedMessage)
             viewModel.dismissFailure()
         }
     }
@@ -291,26 +158,21 @@ fun ThreadRoute(
         state = state,
         snackbarHostState = snackbarHostState,
         recipient = recipient,
+        contactName = contactName,
         onBack = onBack,
         draft = draftText,
         onDraftChange = { text ->
             draftText = text
             viewModel.onDraftChanged(text)
         },
-        subject = subjectText,
-        onSubjectChange = { subjectText = it },
         onSubmit = { body ->
-            viewModel.onDraftSubmitted(body, subjectText)
+            viewModel.onDraftSubmitted(body)
             draftText = ""
-            subjectText = ""
         },
         onRequestSmsRole = onRequestSmsRole,
         onDeleteMessage = viewModel::deleteMessage,
         onResendMessage = viewModel::resendMessage,
         onForward = onForward,
-        onPickAttachment = onPickAttachment,
-        onRemoveAttachment = viewModel::removeAttachment,
-        onDownloadAttachment = viewModel::downloadAttachment,
         onToggleMuted = viewModel::toggleMuted,
         onMessageNumber = onMessageNumber,
     )
@@ -322,21 +184,17 @@ fun ThreadScreen(
     state: ThreadUiState,
     snackbarHostState: SnackbarHostState,
     recipient: String,
+    contactName: String? = null,
     onBack: () -> Unit,
     draft: String,
     onDraftChange: (String) -> Unit,
-    subject: String,
-    onSubjectChange: (String) -> Unit,
     onSubmit: (String) -> Unit,
     onRequestSmsRole: () -> Unit,
     onDeleteMessage: (Long) -> Unit,
     onResendMessage: (Long) -> Unit,
     onForward: (String) -> Unit,
-    onPickAttachment: () -> Unit,
     onToggleMuted: () -> Unit,
     onMessageNumber: (String) -> Unit,
-    onRemoveAttachment: (String) -> Unit,
-    onDownloadAttachment: (Long) -> Unit,
 ) {
     // The bubble the user long-pressed, held until the action sheet is answered.
     var selectedBubble by remember { mutableStateOf<MessageBubble?>(null) }
@@ -360,7 +218,7 @@ fun ThreadScreen(
     // one thing that tells you which thread you are in. Resolved outside the
     // title lambda because the fallback resource has to be read either way.
     val genericTitle = stringResource(R.string.conversations_title)
-    val title = recipient.ifBlank { genericTitle }
+    val title = contactName ?: recipient.ifBlank { genericTitle }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -403,23 +261,11 @@ fun ThreadScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             if (state.canSend) {
-                // The counter describes SMS parts only. A group address (several
-                // members) or any attachment sends the text as MMS, where it is
-                // one body and the per-part arithmetic does not apply.
-                val isMms = state.pendingAttachments.isNotEmpty() ||
-                    AddressNormalizer.membersOf(recipient).size > 1
                 Composer(
                     draft = draft,
                     onDraftChange = onDraftChange,
                     isSending = state.isSending,
                     onSubmit = onSubmit,
-                    pendingAttachments = state.pendingAttachments,
-                    onPickAttachment = onPickAttachment,
-                    onRemoveAttachment = onRemoveAttachment,
-                    showSegmentCounter = !isMms,
-                    subject = subject,
-                    onSubjectChange = onSubjectChange,
-                    showSubject = isMms,
                 )
             }
         },
@@ -447,7 +293,6 @@ fun ThreadScreen(
                     MessageList(
                         messages = state.messages,
                         onLongPress = { selectedBubble = it },
-                        onDownloadAttachment = onDownloadAttachment,
                         onMessageNumber = onMessageNumber,
                     )
                 }
@@ -516,16 +361,24 @@ fun ThreadScreen(
 private fun MessageList(
     messages: List<MessageBubble>,
     onLongPress: (MessageBubble) -> Unit,
-    onDownloadAttachment: (Long) -> Unit,
     onMessageNumber: (String) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    var hasInitialPosition by remember { mutableStateOf(false) }
 
     // New messages arrive at the end. Scrolling to the latest one keeps the
     // newest content visible without yanking the user if they scrolled up to
-    // read history.
+    // read history. The first load jumps directly to the end: animating across
+    // a long history makes opening a conversation look stalled and composes
+    // every intermediate list position before the latest message is visible.
     LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex)
+        if (messages.isEmpty()) return@LaunchedEffect
+        if (!hasInitialPosition) {
+            listState.scrollToItem(messages.lastIndex)
+            hasInitialPosition = true
+        } else {
+            listState.animateScrollToItem(messages.lastIndex)
+        }
     }
 
     LazyColumn(
@@ -544,7 +397,6 @@ private fun MessageList(
             MessageBubbleRow(
                 bubble = bubble,
                 onLongPress = { onLongPress(bubble) },
-                onDownloadAttachment = onDownloadAttachment,
                 onMessageNumber = onMessageNumber,
             )
         }
@@ -556,7 +408,6 @@ private fun MessageList(
 private fun MessageBubbleRow(
     bubble: MessageBubble,
     onLongPress: () -> Unit,
-    onDownloadAttachment: (Long) -> Unit,
     onMessageNumber: (String) -> Unit,
 ) {
     val description = if (bubble.isOutgoing) {
@@ -600,22 +451,6 @@ private fun MessageBubbleRow(
                 .semantics(mergeDescendants = true) { contentDescription = description },
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                if (bubble.attachments.isNotEmpty()) {
-                    bubble.attachments.forEach { attachment ->
-                        AttachmentPreview(attachment = attachment)
-                    }
-                }
-                // A carrier-supplied MMS subject sits above the body like an
-                // email header; text-only and outgoing MMS rows rarely have one.
-                if (bubble.isMms && !bubble.subject.isNullOrBlank()) {
-                    Text(
-                        text = bubble.subject!!,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 4.dp),
-                    )
-                }
                 // URLs, emails, WhatsApp links, phone numbers and coordinates
                 // are tappable inside the bubble. The body stays plain text in
                 // the accessibility label, which already reads out the message.
@@ -623,40 +458,14 @@ private fun MessageBubbleRow(
                     LinkifiedText(
                         text = bubble.body,
                         style = MaterialTheme.typography.bodyLarge,
-                        maxLines = 20,
-                        overflow = TextOverflow.Ellipsis,
                         onMessage = onMessageNumber,
                     )
-                }
-                if (bubble.needsDownload) {
-                    TextButton(
-                        onClick = { onDownloadAttachment(bubble.id) },
-                        modifier = Modifier.testTag(ThreadTestTags.DOWNLOAD_BUTTON),
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_action_download),
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp),
-                        )
-                        Text(
-                            text = stringResource(R.string.thread_download_attachment),
-                            modifier = Modifier.padding(start = 6.dp),
-                        )
-                    }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (bubble.isMms) {
-                        Text(
-                            text = "MMS",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(end = 6.dp),
-                        )
-                    }
                     Text(
                         text = bubble.timestampLabel,
                         style = MaterialTheme.typography.labelSmall,
@@ -816,65 +625,24 @@ private fun Composer(
     onDraftChange: (String) -> Unit,
     isSending: Boolean,
     onSubmit: (String) -> Unit,
-    pendingAttachments: List<AttachmentPart>,
-    onPickAttachment: () -> Unit,
-    onRemoveAttachment: (String) -> Unit,
-    showSegmentCounter: Boolean,
-    subject: String,
-    onSubjectChange: (String) -> Unit,
-    showSubject: Boolean,
 ) {
     val draftLabel = stringResource(R.string.thread_composer_description)
-    val subjectLabel = stringResource(R.string.thread_subject_label)
-    val subjectHint = stringResource(R.string.thread_subject_hint)
     val sendLabel = stringResource(R.string.thread_send)
     val hint = stringResource(R.string.thread_draft_hint)
-    val attachLabel = stringResource(R.string.thread_attach)
-    val removeLabel = stringResource(R.string.thread_remove_attachment)
-    val canSend = (draft.isNotBlank() || pendingAttachments.isNotEmpty()) && !isSending
+    val canSend = draft.isNotBlank() && !isSending
 
-    Surface(tonalElevation = 3.dp) {
+    Surface(
+        tonalElevation = 3.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .imePadding(),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .testTag(ThreadTestTags.COMPOSER),
         ) {
-            // The subject is an MMS-only field: it appears once the message has
-            // an attachment or several recipients, which is what makes the route
-            // MMS. Showing it for a plain SMS would offer a field the SMS leg
-            // silently drops.
-            if (showSubject) {
-                OutlinedTextField(
-                    value = subject,
-                    onValueChange = onSubjectChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, top = 8.dp)
-                        .testTag(ThreadTestTags.SUBJECT_FIELD)
-                        .semantics { contentDescription = subjectLabel },
-                    label = { Text(subjectHint) },
-                    singleLine = true,
-                    enabled = !isSending,
-                )
-            }
-
-            if (pendingAttachments.isNotEmpty()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 12.dp, end = 12.dp, top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    pendingAttachments.forEach { attachment ->
-                        AttachmentChip(
-                            fileName = attachment.fileName ?: "attachment",
-                            onRemove = { onRemoveAttachment(attachment.filePath.orEmpty()) },
-                            removeLabel = removeLabel,
-                        )
-                    }
-                }
-            }
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -882,14 +650,6 @@ private fun Composer(
                 verticalAlignment = Alignment.Bottom,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                IconButton(
-                    onClick = onPickAttachment,
-                    enabled = !isSending,
-                    modifier = Modifier.semantics { contentDescription = attachLabel },
-                ) {
-                    Icon(imageVector = Icons.Filled.Add, contentDescription = null)
-                }
-
                 Column(modifier = Modifier.weight(1f)) {
                     OutlinedTextField(
                         value = draft,
@@ -899,11 +659,12 @@ private fun Composer(
                             .testTag(ThreadTestTags.DRAFT_FIELD)
                             .semantics { contentDescription = draftLabel },
                         placeholder = { Text(hint) },
+                        shape = RoundedCornerShape(12.dp),
                         maxLines = 5,
                         enabled = !isSending,
                     )
 
-                    if (showSegmentCounter && draft.isNotEmpty()) {
+                    if (draft.isNotEmpty()) {
                         // Warns before a send that will cost several messages.
                         // A blank field has no counter to show.
                         val estimate = SmsSegments.estimate(draft)
@@ -954,43 +715,6 @@ private fun Composer(
                         Icon(imageVector = Icons.AutoMirrored.Filled.Send, contentDescription = null)
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun AttachmentChip(
-    fileName: String,
-    onRemove: () -> Unit,
-    removeLabel: String,
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-    ) {
-        Row(
-            modifier = Modifier.padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(
-                text = fileName,
-                style = MaterialTheme.typography.labelMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false),
-            )
-            IconButton(
-                onClick = onRemove,
-                modifier = Modifier.size(24.dp).semantics { contentDescription = removeLabel },
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.Close,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
             }
         }
     }

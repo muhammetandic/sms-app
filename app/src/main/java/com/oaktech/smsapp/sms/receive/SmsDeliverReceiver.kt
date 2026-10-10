@@ -8,7 +8,9 @@ import android.util.Log
 
 /**
  * Receives SMS_DELIVER, which Android only delivers to the default SMS app.
- * Bulk parsing and persistence is delegated off the main thread via goAsync().
+ * Parsing is cheap, so persistence is delegated to durable WorkManager work
+ * before this receiver returns. A coroutine tied to the receiver would lose an
+ * SMS if the process died after the broadcast's short execution window.
  */
 class SmsDeliverReceiver : BroadcastReceiver() {
 
@@ -27,9 +29,8 @@ class SmsDeliverReceiver : BroadcastReceiver() {
         }
         if (parts.isEmpty()) return
 
-        val pendingResult = goAsync()
-        SmsReceiveWorker.enqueue(context, parts) {
-            pendingResult.finish()
+        if (!SmsReceiveWork.enqueue(context, parts)) {
+            Log.w(LogTags.RECEIVE, "Could not queue incoming SMS")
         }
     }
 }

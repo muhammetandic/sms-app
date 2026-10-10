@@ -1,7 +1,7 @@
 package com.oaktech.smsapp.ui.compose
 
 /**
- * Parses `sms:` / `smsto:` / `mms:` / `mmsto:` URIs from a SENDTO intent.
+ * Parses `sms:` / `smsto:` URIs from a SENDTO intent.
  *
  * The scheme and the recipient arrive in different places depending on who sent
  * the intent, and getting this wrong means texting the wrong person, so every
@@ -33,7 +33,10 @@ object ComposeIntentParser {
 
         return addressPart
             .split(',')
-            .map { it.trim() }
+            // Contacts commonly launches SENDTO with the address percent-
+            // encoded. Protect literal plus signs before URLDecoder, whose
+            // form-decoding rules would otherwise turn them into spaces.
+            .map { decodeAddress(it.trim()) }
             .filter { it.isNotEmpty() }
     }
 
@@ -53,5 +56,8 @@ object ComposeIntentParser {
     private fun decodeQueryValue(value: String): String =
         java.net.URLDecoder.decode(value, Charsets.UTF_8.name())
 
-    private val SMS_SCHEMES = setOf("sms", "smsto", "mms", "mmsto")
+    private fun decodeAddress(value: String): String =
+        java.net.URLDecoder.decode(value.replace("+", "%2B"), Charsets.UTF_8.name())
+
+    private val SMS_SCHEMES = setOf("sms", "smsto")
 }

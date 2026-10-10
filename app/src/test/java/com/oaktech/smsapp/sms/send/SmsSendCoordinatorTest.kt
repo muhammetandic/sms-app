@@ -40,7 +40,6 @@ class SmsSendCoordinatorTest {
             database.conversationDao(),
             database.messageDao(),
             database.draftDao(),
-            database.attachmentDao(),
             writer,
         )
         DataGraph.overrideForTest(context, repository)
@@ -69,6 +68,19 @@ class SmsSendCoordinatorTest {
         )
         assertTrue("nothing was handed to the transport", transport.sentParts.isEmpty())
         assertTrue("nothing was written to the provider", writer.insertedSent.isEmpty())
+    }
+
+    @Test
+    fun `a send without sms permission fails before anything is recorded`() = runTest {
+        val transport = RecordingTransport(canSend = false)
+        val coordinator = SmsSendCoordinator(context, transport, isRoleHeld = { true })
+
+        val outcome = coordinator.send("+15551234567", "permission denied")
+
+        assertEquals(SendOutcome(SendState.FAILED, 0, 0, ResultCode.GENERIC_FAILURE), outcome)
+        assertTrue(repository.observeConversations().first().isEmpty())
+        assertTrue(transport.sentParts.isEmpty())
+        assertTrue(writer.insertedSent.isEmpty())
     }
 
     @Test
@@ -108,8 +120,13 @@ class SmsSendCoordinatorTest {
     }
 
     /** Splits every body the same way, so the recorded parts are predictable. */
-    private class RecordingTransport(private val partsPerMessage: Int = 1) : SmsTransport {
+    private class RecordingTransport(
+        private val partsPerMessage: Int = 1,
+        private val canSend: Boolean = true,
+    ) : SmsTransport {
         val sentParts = mutableListOf<String>()
+
+        override fun canSend(): Boolean = canSend
 
         override fun divideMessage(body: String): List<String> = List(partsPerMessage) { body }
 

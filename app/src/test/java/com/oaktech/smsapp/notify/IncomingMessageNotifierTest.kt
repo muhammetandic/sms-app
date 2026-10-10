@@ -37,6 +37,13 @@ class IncomingMessageNotifierTest {
     @Before
     fun setUp() {
         context = ApplicationProvider.getApplicationContext()
+        val preferences = NotificationActionPreferences(context)
+        listOf(
+            NotificationActionReceiver.ACTION_REPLY,
+            NotificationActionReceiver.ACTION_MARK_READ,
+            NotificationActionReceiver.ACTION_MARK_SPAM,
+            NotificationActionReceiver.ACTION_DELETE,
+        ).forEach { preferences.setEnabled(it, true) }
         // POST_NOTIFICATIONS is a runtime permission from API 33, and the
         // notifier's real guard checks it before doing anything.
         shadowOf(context as Application).grantPermissions(
@@ -65,6 +72,21 @@ class IncomingMessageNotifierTest {
         assertEquals(4, actions().size)
         assertEquals(
             listOf("Reply", "Read", "Spam", "Delete"),
+            actions().map { it.title.toString() },
+        )
+    }
+
+    @Test
+    fun `disabled action is omitted without affecting other actions`() {
+        NotificationActionPreferences(context).setEnabled(
+            NotificationActionReceiver.ACTION_DELETE,
+            false,
+        )
+
+        IncomingMessageNotifier(context).notify(message, messageId = 7L, conversationId = 3L)
+
+        assertEquals(
+            listOf("Reply", "Read", "Spam"),
             actions().map { it.title.toString() },
         )
     }
@@ -241,20 +263,5 @@ class IncomingMessageNotifierTest {
         )
 
         assertEquals("+15551234567", posted().extras.getString(Notification.EXTRA_TITLE))
-    }
-
-    @Test
-    fun `mms title shows the resolved contact name`() {
-        IncomingMessageNotifier(context).notifyMms(
-            address = "+15551234567",
-            body = "",
-            subject = null,
-            messageId = 7L,
-            conversationId = 3L,
-            attachmentCount = 1,
-            displayName = "Alice Example",
-        )
-
-        assertEquals("Alice Example", posted().extras.getString(Notification.EXTRA_TITLE))
     }
 }

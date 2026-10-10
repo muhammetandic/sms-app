@@ -8,6 +8,9 @@ import android.app.PendingIntent
  */
 interface SmsTransport {
 
+    /** Whether the platform can accept a send at this moment. */
+    fun canSend(): Boolean = true
+
     /** Splits a body into the PDUs that must be sent. */
     fun divideMessage(body: String): List<String>
 

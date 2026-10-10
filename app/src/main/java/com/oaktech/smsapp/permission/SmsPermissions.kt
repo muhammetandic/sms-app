@@ -19,13 +19,10 @@ object SmsPermissions {
         Manifest.permission.READ_SMS,
         Manifest.permission.RECEIVE_SMS,
         Manifest.permission.SEND_SMS,
-        // MMS arrives as a WAP push and these two guard it separately from
-        // RECEIVE_SMS. Both are dangerous permissions in the SMS group, so a
-        // request that omits them leaves the platform silently dropping
-        // WAP_PUSH_DELIVER on a fresh install and the MMS receive path dead —
-        // nothing else in the app can detect that, because a denied dangerous
-        // permission behaves exactly like an MMS that never came.
-        Manifest.permission.RECEIVE_MMS,
+        // The app does not process MMS, but the system's ROLE_SMS definition
+        // requires a WAP_PUSH_DELIVER receiver, and the platform can drop that
+        // broadcast unless the app holds this. Without it a fresh install can
+        // fail to be made the default SMS app, which is what breaks SMS itself.
         Manifest.permission.RECEIVE_WAP_PUSH,
         Manifest.permission.READ_CONTACTS,
         // Names the active SIMs so the settings screen can offer a send-subscription
@@ -68,6 +65,5 @@ object SmsPermissions {
         permission == Manifest.permission.READ_SMS ||
             permission == Manifest.permission.RECEIVE_SMS ||
             permission == Manifest.permission.SEND_SMS ||
-            permission == Manifest.permission.RECEIVE_MMS ||
             permission == Manifest.permission.RECEIVE_WAP_PUSH
 }

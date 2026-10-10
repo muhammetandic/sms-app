@@ -9,8 +9,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [ConversationEntity::class, MessageEntity::class, DraftEntity::class, AttachmentEntity::class],
-    version = 10,
+    entities = [ConversationEntity::class, MessageEntity::class, DraftEntity::class],
+    version = 13,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -21,8 +21,6 @@ abstract class SmsDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
 
     abstract fun draftDao(): DraftDao
-
-    abstract fun attachmentDao(): AttachmentDao
 
     companion object {
         private const val NAME = "sms.db"
@@ -194,6 +192,124 @@ abstract class SmsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds the sender address to messages.
+         *
+         * Before this, a row said which conversation it belonged to but never
+         * which member of a group wrote it. Existing inbound rows are backfilled
+         * from their conversation's display address, which is correct for the
+         * 1:1 threads that existed: sender and conversation were the same
+         * number. Group threads store the sender on future inbound rows instead.
+         */
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE messages ADD COLUMN address TEXT")
+                db.execSQL(
+                    "UPDATE messages SET address = " +
+                        "(SELECT display_address FROM conversations " +
+                        "WHERE conversations.id = messages.conversation_id) " +
+                        "WHERE direction = 'INCOMING' AND address IS NULL",
+                )
+            }
+        }
+
+        /**
+         * Gives drafts their own identity so one contact can have several
+         * independent unsent messages. The old table used conversation_id as
+         * its primary key, so it must be recreated rather than altered.
+         */
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("PRAGMA foreign_keys = OFF")
+                db.execSQL(
+                    "CREATE TABLE drafts_new (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "conversation_id INTEGER NOT NULL, " +
+                        "body TEXT NOT NULL, " +
+                        "pending_attachments TEXT)",
+                )
+                db.execSQL(
+                    "INSERT INTO drafts_new (conversation_id, body, pending_attachments) " +
+                        "SELECT conversation_id, body, pending_attachments FROM drafts",
+                )
+                db.execSQL("DROP TABLE drafts")
+                db.execSQL("ALTER TABLE drafts_new RENAME TO drafts")
+                db.execSQL("PRAGMA foreign_keys = ON")
+            }
+        }
+
+        /**
+         * Removes MMS: drops the multimedia columns from messages, the
+         * unsent-attachment queue from drafts, and the attachments table.
+         *
+         * The app no longer sends, receives, renders or shares MMS, so none of
+         * this state can be produced or read again. The two columns that survive
+         * a rewrite (messages and drafts) are recreated rather than altered for
+         * the same reason as [MIGRATION_9_10]: API 30 ships SQLite 3.32, which
+         * has no `ALTER TABLE ... DROP COLUMN`. Messages are rebuilt with foreign
+         * keys off so dropping the old table does not cascade-delete anything
+         * that has already been copied (there are no child tables left once
+         * attachments is gone, but the pragma keeps the recipe independent of
+         * that). The attachments table is dropped outright.
+         */
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("PRAGMA foreign_keys = OFF")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `messages_new` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`conversation_id` INTEGER NOT NULL, " +
+                        "`dedupe_key` TEXT NOT NULL, " +
+                        "`body` TEXT NOT NULL, " +
+                        "`sent_at` INTEGER NOT NULL, " +
+                        "`direction` TEXT NOT NULL, " +
+                        "`status` TEXT NOT NULL, " +
+                        "`part_count` INTEGER NOT NULL, " +
+                        "`provider_id` INTEGER, " +
+                        "`delivered_at` INTEGER, " +
+                        "`error_code` INTEGER, " +
+                        "`sim_slot` INTEGER, " +
+                        "FOREIGN KEY(`conversation_id`) REFERENCES `conversations`(`id`) " +
+                        "ON UPDATE NO ACTION ON DELETE CASCADE)",
+                )
+                db.execSQL(
+                    "INSERT INTO `messages_new` (" +
+                        "`id`, `conversation_id`, `dedupe_key`, `body`, `sent_at`, " +
+                        "`direction`, `status`, `part_count`, `provider_id`, `delivered_at`, " +
+                        "`error_code`, `sim_slot`) " +
+                        "SELECT `id`, `conversation_id`, `dedupe_key`, `body`, `sent_at`, " +
+                        "`direction`, `status`, `part_count`, `provider_id`, `delivered_at`, " +
+                        "`error_code`, `sim_slot` FROM `messages`",
+                )
+                db.execSQL("DROP TABLE `messages`")
+                db.execSQL("ALTER TABLE `messages_new` RENAME TO `messages`")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_messages_conversation_id_sent_at` " +
+                        "ON `messages` (`conversation_id`, `sent_at`)",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_messages_dedupe_key` " +
+                        "ON `messages` (`dedupe_key`)",
+                )
+
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `drafts_new` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`conversation_id` INTEGER NOT NULL, " +
+                        "`body` TEXT NOT NULL)",
+                )
+                db.execSQL(
+                    "INSERT INTO `drafts_new` (`id`, `conversation_id`, `body`) " +
+                        "SELECT `id`, `conversation_id`, `body` FROM `drafts`",
+                )
+                db.execSQL("DROP TABLE `drafts`")
+                db.execSQL("ALTER TABLE `drafts_new` RENAME TO `drafts`")
+
+                db.execSQL("DROP TABLE IF EXISTS `attachments`")
+                db.execSQL("PRAGMA foreign_keys = ON")
+            }
+        }
+
         @Volatile
         private var instance: SmsDatabase? = null
 
@@ -214,6 +330,9 @@ abstract class SmsDatabase : RoomDatabase() {
                     MIGRATION_7_8,
                     MIGRATION_8_9,
                     MIGRATION_9_10,
+                    MIGRATION_10_11,
+                    MIGRATION_11_12,
+                    MIGRATION_12_13,
                 )
                 .build()
     }

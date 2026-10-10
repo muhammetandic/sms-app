@@ -13,6 +13,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 
 /**
  * Live view of whether this app holds the default SMS role.
@@ -31,6 +32,15 @@ class SmsRoleState internal constructor(
 
     fun refresh() {
         isHeld = isRoleHeld(context)
+    }
+
+    /** The role service can publish the new holder shortly after the result returns. */
+    suspend fun refreshAfterRequest() {
+        repeat(5) { attempt ->
+            refresh()
+            if (isHeld || attempt == 4) return
+            delay(200)
+        }
     }
 
     fun requestIntent(): Intent? =

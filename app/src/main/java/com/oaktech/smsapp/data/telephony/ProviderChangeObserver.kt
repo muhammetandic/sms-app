@@ -19,10 +19,9 @@ import kotlinx.coroutines.launch
  *
  * The app's own stores mirror every message it handles, so a user never needs
  * to poll for their own traffic. But the provider is also written by the
- * platform (MMS state changes, delivery reports) and by whichever app held the
- * SMS role before this one: rows that this app did not originate. Without an
- * observer those only reach the store on the next launch, leaving the inbox
- * stale for the whole session.
+ * platform (delivery reports) and by whichever app held the SMS role before this
+ * one: rows that this app did not originate. Without an observer those only reach
+ * the store on the next launch, leaving the inbox stale for the whole session.
  *
  * The callback is [TelephonySmsDataSource]-style gated: the import coordinator
  * checks the role before querying, so a notification is harmless when the app
@@ -55,10 +54,9 @@ class ProviderChangeObserver(
 
     private val importRunnable = Runnable { trigger() }
 
-    /** Registers on the SMS and MMS tables, including row-level notifications. */
+    /** Registers on the SMS and thread tables, including row-level notifications. */
     fun start() {
         resolver.registerContentObserver(Telephony.Sms.CONTENT_URI, true, observer)
-        resolver.registerContentObserver(Telephony.Mms.CONTENT_URI, true, observer)
         resolver.registerContentObserver(Telephony.Threads.CONTENT_URI, true, observer)
     }
 

@@ -31,7 +31,7 @@ import org.robolectric.annotation.Config
 class SmsDatabaseMigrationTest {
 
     /** The schema this test migrates up to; keep in lockstep with `version` on [SmsDatabase]. */
-    private val currentVersion = 10
+    private val currentVersion = 13
 
     @get:Rule
     val helper = MigrationTestHelper(
@@ -43,7 +43,7 @@ class SmsDatabaseMigrationTest {
     fun `migrating every released schema reaches the current schema`() {
         // Version 6's schema JSON was never committed, so there is no asset to
         // seed a v6 database from; every other start version has one.
-        val startVersions = listOf(1, 2, 3, 4, 5, 7, 8, 9)
+        val startVersions = listOf(1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12)
         for (start in startVersions) {
             val name = "migration-$start"
             helper.createDatabase(name, start)
@@ -103,6 +103,9 @@ class SmsDatabaseMigrationTest {
             SmsDatabase.MIGRATION_7_8,
             SmsDatabase.MIGRATION_8_9,
             SmsDatabase.MIGRATION_9_10,
+            SmsDatabase.MIGRATION_10_11,
+            SmsDatabase.MIGRATION_11_12,
+            SmsDatabase.MIGRATION_12_13,
         )
     }
 }

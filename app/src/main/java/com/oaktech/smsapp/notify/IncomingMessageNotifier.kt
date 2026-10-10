@@ -30,6 +30,7 @@ import com.oaktech.smsapp.sms.receive.InboundMessage
 class IncomingMessageNotifier(context: Context) {
 
     private val appContext = context.applicationContext
+    private val actionPreferences = NotificationActionPreferences(appContext)
 
     /**
      * The POST_NOTIFICATIONS check below is a real runtime guard, not a
@@ -52,43 +53,14 @@ class IncomingMessageNotifier(context: Context) {
             body = message.body,
             messageId = messageId,
             conversationId = conversationId,
-            attachmentCount = 0,
-            subject = null,
             displayName = displayName,
         )
-
-    /**
-     * MMS flavor of [notify], where an attachment is the point of the message.
-     * The notification text still leads with the body, but gains an attachment
-     * count (or, when the body is empty, the subject) so the arrival does not
-     * look like a blank SMS.
-     */
-    @SuppressLint("NotificationPermission")
-    fun notifyMms(
-        address: String,
-        body: String,
-        subject: String?,
-        messageId: Long,
-        conversationId: Long?,
-        attachmentCount: Int,
-        displayName: String? = null,
-    ) = postNotification(
-        address = address,
-        body = body,
-        messageId = messageId,
-        conversationId = conversationId,
-        attachmentCount = attachmentCount,
-        subject = subject,
-        displayName = displayName,
-    )
 
     private fun postNotification(
         address: String,
         body: String,
         messageId: Long,
         conversationId: Long?,
-        attachmentCount: Int,
-        subject: String?,
         displayName: String?,
     ) {
         // Guarded inline rather than behind the NotificationChannels helper so
@@ -111,7 +83,7 @@ class IncomingMessageNotifier(context: Context) {
         // (it already runs off the main thread); a missing contact and a blank
         // name both fall back to the number rather than an empty title.
         val title = displayName?.takeIf { it.isNotBlank() } ?: address
-        val text = bodyText(body, subject, attachmentCount)
+        val text = bodyText(body)
         val conversation = conversationId ?: -1L
 
         val contentIntent = PendingIntent.getActivity(
@@ -125,7 +97,7 @@ class IncomingMessageNotifier(context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(appContext, NotificationChannels.INCOMING_MESSAGES)
+        val builder = NotificationCompat.Builder(appContext, NotificationChannels.INCOMING_MESSAGES)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle(title)
             .setContentText(text)
@@ -134,15 +106,23 @@ class IncomingMessageNotifier(context: Context) {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
             .setContentIntent(contentIntent)
-            // Reply first, so the direct-reply slot is the primary action on the
-            // notification and the rest of the actions follow it.
-            .addAction(
-                replyAction(address, conversation, messageId),
-            )
-            .addAction(action(ACTION_MARK_READ, R.drawable.ic_action_mark_read, R.string.notification_action_read, conversation, messageId))
-            .addAction(action(ACTION_MARK_SPAM, R.drawable.ic_action_spam, R.string.notification_action_spam, conversation, messageId))
-            .addAction(action(ACTION_DELETE, R.drawable.ic_action_delete, R.string.notification_action_delete, conversation, messageId))
-            .build()
+
+        // Reply first, so the direct-reply slot is the primary action when it
+        // is enabled. Each remaining action is independently configurable.
+        if (actionPreferences.isEnabled(ACTION_REPLY)) {
+            builder.addAction(replyAction(address, conversation, messageId))
+        }
+        if (actionPreferences.isEnabled(ACTION_MARK_READ)) {
+            builder.addAction(action(ACTION_MARK_READ, R.drawable.ic_action_mark_read, R.string.notification_action_read, conversation, messageId))
+        }
+        if (actionPreferences.isEnabled(ACTION_MARK_SPAM)) {
+            builder.addAction(action(ACTION_MARK_SPAM, R.drawable.ic_action_spam, R.string.notification_action_spam, conversation, messageId))
+        }
+        if (actionPreferences.isEnabled(ACTION_DELETE)) {
+            builder.addAction(action(ACTION_DELETE, R.drawable.ic_action_delete, R.string.notification_action_delete, conversation, messageId))
+        }
+
+        val notification = builder.build()
 
         manager.notify(NotificationIds.forConversation(conversationId), notification)
     }
@@ -223,26 +203,11 @@ class IncomingMessageNotifier(context: Context) {
     }
 
     /**
-     * Composes the notification text from the fields an incoming message has.
-     *
-     * The body leads when present; otherwise the subject stands in for it. An
-     * attachment count is appended so a media-only MMS is not announced as an
-     * empty blanket notification.
+     * The notification text for an incoming message. Falls back to a generic
+     * line when the body is blank, so the notification is never empty.
      */
-    private fun bodyText(body: String, subject: String?, attachmentCount: Int): String {
-        val text = when {
-            body.isNotBlank() -> body
-            !subject.isNullOrBlank() -> subject
-            else -> appContext.getString(R.string.notification_mms_no_text)
-        }
-        if (attachmentCount <= 0) return text
-        val suffix = appContext.resources.getQuantityString(
-            R.plurals.notification_attachments,
-            attachmentCount,
-            attachmentCount,
-        )
-        return if (text.isEmpty()) suffix else "$text ($suffix)"
-    }
+    private fun bodyText(body: String): String =
+        body.takeIf { it.isNotBlank() } ?: appContext.getString(R.string.notification_no_text)
 
     private companion object {
         const val ACTION_REQUEST_BASE = 100_000

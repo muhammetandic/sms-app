@@ -27,6 +27,43 @@ class ContactNameResolver(context: Context) {
     private val cache = HashMap<String, String?>()
 
     /**
+     * Loads the phone/name index in one provider query. The conversation list
+     * often needs several names at once; issuing one PhoneLookup query per row
+     * makes the first frame show numbers and leaves the list visibly catching
+     * up behind the provider.
+     */
+    suspend fun preload() = withContext(Dispatchers.IO) {
+        if (!hasPermission()) return@withContext
+
+        runCatching {
+            resolver.query(
+                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                arrayOf(
+                    ContactsContract.CommonDataKinds.Phone.NUMBER,
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ),
+                null,
+                null,
+                null,
+            )?.use { cursor ->
+                val numberIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+                val nameIndex = cursor.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+                if (numberIndex < 0 || nameIndex < 0) return@use
+
+                synchronized(cache) {
+                    while (cursor.moveToNext()) {
+                        val number = cursor.getString(numberIndex)?.trim().orEmpty()
+                        if (number.isNotEmpty()) {
+                            cache[ContactAddressNormalizer.normalize(number)] =
+                                cursor.getString(nameIndex)?.takeIf { it.isNotBlank() }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Display name for [address], or null when no contact matches or the
      * contacts permission is not held.
      */
@@ -36,10 +73,13 @@ class ContactNameResolver(context: Context) {
 
         // A cached null is a real answer: that number has no contact. Retrying
         // every scroll would repeat a query that is known to return nothing.
-        if (cache.containsKey(key)) return@withContext cache[key]
+        val normalizedKey = ContactAddressNormalizer.normalize(key)
+        synchronized(cache) {
+            if (cache.containsKey(normalizedKey)) return@withContext cache[normalizedKey]
+        }
 
         val name = runCatching { queryDisplayName(key) }.getOrNull()
-        cache[key] = name
+        synchronized(cache) { cache[normalizedKey] = name }
         name
     }
 

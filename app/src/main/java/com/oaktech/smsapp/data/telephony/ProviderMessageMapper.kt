@@ -24,14 +24,8 @@ object ProviderMessageMapper {
      * Incoming rows instead reuse the live path's address/date/body
      * fingerprint so a message this app already received over SMS_DELIVER is
      * never stored twice.
-     *
-     * The two provider tables hand out overlapping id ranges (each starts its
-     * own _id sequence at 1), so rows read from the MMS table are namespaced
-     * separately from SMS rows. The SMS namespace is deliberately left as
-     * `provider:$id` so rows imported before this split keep matching on re-run.
      */
-    fun dedupeKey(providerId: Long, mms: Boolean = false): String =
-        if (mms) "provider:mms:$providerId" else "provider:$providerId"
+    fun dedupeKey(providerId: Long): String = "provider:$providerId"
 
     data class Mapped(
         val address: String,
@@ -40,13 +34,12 @@ object ProviderMessageMapper {
         val direction: MessageDirection,
         val status: MessageStatus,
         val providerId: Long,
-        val mms: Boolean,
     )
 
     /**
      * Null when the row cannot be shown: a provider message with no address and
-     * no body is either an MMS stub or a corrupt row, and importing it would
-     * put an empty bubble in a conversation.
+     * no body is corrupt, and importing it would put an empty bubble in a
+     * conversation.
      */
     fun map(message: ProviderMessage): Mapped? {
         if (message.address.isBlank() && message.body.isBlank()) return null
@@ -62,7 +55,6 @@ object ProviderMessageMapper {
             direction = if (outgoing) MessageDirection.OUTGOING else MessageDirection.INCOMING,
             status = statusFor(message, outgoing),
             providerId = message.id,
-            mms = message.mms,
         )
     }
 

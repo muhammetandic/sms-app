@@ -111,11 +111,7 @@ interface ConversationDao {
         const val SNIPPET_QUERY = """
             SELECT c.id, c.address_key, c.display_address,
                    c.last_message_at, c.unread_count, c.is_pinned, c.is_muted,
-                   (SELECT COALESCE(
-                        NULLIF(m.body, ''),
-                        NULLIF(m.subject, ''),
-                        CASE WHEN m.is_mms = 1 THEN 'MMS' ELSE '' END
-                    ) FROM messages m
+                   (SELECT COALESCE(NULLIF(m.body, ''), '') FROM messages m
                      WHERE m.conversation_id = c.id
                      ORDER BY m.sent_at DESC LIMIT 1) AS snippet
               FROM conversations c

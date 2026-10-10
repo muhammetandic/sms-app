@@ -27,32 +27,12 @@ enum class ResultCode(val platformCode: Int) {
     INTERNAL_ERROR(SmsManager.RESULT_INTERNAL_ERROR),
     CANCELLED(SmsManager.RESULT_CANCELLED),
     NO_DEFAULT_SMS_APP(SmsManager.RESULT_NO_DEFAULT_SMS_APP),
-    /**
-     * The MMSC transaction failed at the HTTP layer, or the platform refused the
-     * PDU before the request was even attempted.
-     */
-    /**
-     * The MMSC transaction failed at the HTTP layer, or the platform refused the
-     * PDU before the request was even attempted.
-     */
-    MMS_SEND_FAILED(0x1000),
-    /** No APN with an MMSC address is configured for the SIM. */
-    MMS_CONFIG_UNAVAILABLE(0x1001),
-    /** No MMS-capable transport was available when the message was ready. */
-    MMS_NETWORK_UNAVAILABLE(0x1002),
     UNKNOWN(Int.MAX_VALUE);
 
     val isFailure: Boolean
         get() = this != SENT && this != DELIVERED
 
     companion object {
-        /**
-         * Entry values for MMS failures. The platform does not report MMS
-         * per-message result codes like it does for SMS, so these are app-level
-         * and kept away from every real platform value above (all < 0x100).
-         */
-        const val MMS_BASE = 0x1000
-
         /**
          * `RESULT_CANCELED` (0) and `RESULT_ERROR_NONE` (0) share a value, so
          * only `RESULT_OK` counts as success. Anything unrecognised is a

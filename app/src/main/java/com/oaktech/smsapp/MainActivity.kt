@@ -117,7 +117,7 @@ class MainActivity : ComponentActivity() {
                 composeRequest = ComposeRequest(
                     // A SENDTO may name several recipients ("sms:+111,+222").
                     // The composer models them as one comma-joined address and
-                    // the send route splits them into a group MMS, so every
+                    // the send path sends each its own message, so every
                     // recipient is kept rather than silently dropping all but
                     // the first.
                     recipient = recipients.joinToString(", "),

@@ -61,11 +61,7 @@ class TurkishTranslationTest {
         assertEquals("Okundu", tr.getString(R.string.notification_action_read))
         assertEquals("Önemsiz", tr.getString(R.string.notification_action_spam))
         assertEquals("Sil", tr.getString(R.string.notification_action_delete))
-        assertEquals("Çoklu ortam mesajı", tr.getString(R.string.notification_mms_no_text))
-        assertEquals(
-            "2 ek",
-            tr.resources.getQuantityString(R.plurals.notification_attachments, 2, 2),
-        )
+        assertEquals("Yeni mesaj", tr.getString(R.string.notification_no_text))
     }
 
     @Test
@@ -156,8 +152,6 @@ class TurkishTranslationTest {
     fun `composer counter and subject strings are translated`() {
         val tr = inTurkish()
 
-        assertEquals("Konu", tr.getString(R.string.thread_subject_hint))
-        assertEquals("Mesaj konusu", tr.getString(R.string.thread_subject_label))
         // Numeric placeholders reorder nothing, but the plural is real: Turkish
         // has one form, yet the resource must still resolve without falling back.
         assertEquals(
@@ -235,7 +229,6 @@ class TurkishTranslationTest {
     fun `compose error strings are translated`() {
         val tr = inTurkish()
 
-        assertEquals("Ek indirilemedi", tr.getString(R.string.thread_download_failed))
         assertEquals("Alıcı yok", tr.getString(R.string.compose_error_no_recipient))
         assertEquals(
             "Alıcı telefon numarası olarak çözümlenemiyor",

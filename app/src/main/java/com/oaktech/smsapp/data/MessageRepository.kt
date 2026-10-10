@@ -1,15 +1,12 @@
 package com.oaktech.smsapp.data
 
 import com.oaktech.smsapp.data.local.AddressNormalizer
-import com.oaktech.smsapp.data.local.AttachmentDao
-import com.oaktech.smsapp.data.local.AttachmentEntity
-import com.oaktech.smsapp.data.local.AttachmentState
 import com.oaktech.smsapp.data.local.ConversationDao
 import com.oaktech.smsapp.data.local.ConversationEntity
 import com.oaktech.smsapp.data.local.ConversationSummary
 import com.oaktech.smsapp.data.local.DraftDao
 import com.oaktech.smsapp.data.local.DraftEntity
-import com.oaktech.smsapp.data.local.DownloadState
+import com.oaktech.smsapp.data.local.DraftConversationSummary
 import com.oaktech.smsapp.data.local.MessageDao
 import com.oaktech.smsapp.data.local.MessageDirection
 import com.oaktech.smsapp.data.local.MessageEntity
@@ -17,7 +14,6 @@ import com.oaktech.smsapp.data.local.MessageSearchHit
 import com.oaktech.smsapp.data.local.MessageStatus
 import com.oaktech.smsapp.data.telephony.ProviderMessage
 import com.oaktech.smsapp.data.telephony.ProviderMessageMapper
-import com.oaktech.smsapp.data.telephony.ProviderMms
 import com.oaktech.smsapp.data.telephony.ProviderRowRef
 import com.oaktech.smsapp.data.telephony.TelephonyMessageWriter
 import com.oaktech.smsapp.data.telephony.NoopTelephonyMessageWriter
@@ -25,7 +21,6 @@ import com.oaktech.smsapp.sms.receive.InboundMessage
 import com.oaktech.smsapp.sms.receive.InboundMessageKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import java.security.MessageDigest
 import java.util.UUID
 
 /**
@@ -46,7 +41,6 @@ class MessageRepository(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
     private val draftDao: DraftDao,
-    private val attachmentDao: AttachmentDao,
     /** Mirrors local mutations back to the platform provider. Test default is a no-op. */
     private val telephonyWriter: TelephonyMessageWriter = NoopTelephonyMessageWriter(),
 ) {
@@ -55,6 +49,9 @@ class MessageRepository(
 
     fun observeSpamConversations(): Flow<List<ConversationSummary>> =
         conversationDao.observeSpamConversations()
+
+    fun observeDraftConversations(): Flow<List<DraftConversationSummary>> =
+        draftDao.observeDraftConversations()
 
     fun observeMessages(conversationId: Long): Flow<List<MessageEntity>> =
         messageDao.observeMessages(conversationId)
@@ -122,7 +119,7 @@ class MessageRepository(
         // Mirror before removing locally: the provider row is only reachable
         // while the local row still carries its id. Rows the provider refused
         // to store have none and are skipped.
-        message.providerId?.let { telephonyWriter.delete(listOf(ProviderRowRef(it, message.isMms))) }
+        message.providerId?.let { telephonyWriter.delete(listOf(ProviderRowRef(it))) }
         val conversationId = message.conversationId
         val removed = messageDao.delete(messageId)
         if (removed == 0) return
@@ -196,7 +193,7 @@ class MessageRepository(
      * provider refused to store, which have no identity to write back to.
      */
     private fun List<MessageEntity>.providerRefs(): List<ProviderRowRef> =
-        mapNotNull { message -> message.providerId?.let { ProviderRowRef(it, message.isMms) } }
+        mapNotNull { message -> message.providerId?.let { ProviderRowRef(it) } }
 
     /** Resolves the conversation for a sender, used to deep-link a notification. */
     suspend fun conversationIdFor(address: String): Long? =
@@ -228,25 +225,16 @@ class MessageRepository(
         for (message in messages) {
             val mapped = ProviderMessageMapper.map(message) ?: continue
             // A row the live path already mirrored carries its provider id, so
-            // importing it again would file a second copy: an inbound MMS's live
-            // key and its provider-import key are deliberately different, and
-            // nothing else would collide them.
-            if (messageDao.idForProvider(mapped.providerId, mapped.mms) != null) continue
+            // importing it again would file a second copy.
+            if (messageDao.idForProvider(mapped.providerId) != null) continue
             val conversationId = findOrCreateConversation(mapped.address, mapped.sentAt)
             // Incoming provider rows share the live path's address/date/body key,
             // so a message this app already received through SMS_DELIVER is
             // skipped instead of stored a second time under a provider key.
-            val dedupeKey = when {
-                // Incoming provider rows share the live path's address/date/body key,
-                // so a message this app already received through SMS_DELIVER is
-                // skipped instead of stored a second time under a provider key. MMS
-                // gets its own namespace: the same text from the same sender at the
-                // same time would otherwise collide with an identical SMS row.
-                mapped.direction == MessageDirection.INCOMING && mapped.mms ->
-                    "mms-import:${digest("${mapped.address}|${mapped.sentAt}|${mapped.body}")}"
-                mapped.direction == MessageDirection.INCOMING ->
-                    InboundMessageKey.of(mapped.address, mapped.sentAt, mapped.body).hash
-                else -> ProviderMessageMapper.dedupeKey(mapped.providerId, mapped.mms)
+            val dedupeKey = if (mapped.direction == MessageDirection.INCOMING) {
+                InboundMessageKey.of(mapped.address, mapped.sentAt, mapped.body).hash
+            } else {
+                ProviderMessageMapper.dedupeKey(mapped.providerId)
             }
             val rowId = messageDao.insert(
                 MessageEntity(
@@ -257,7 +245,6 @@ class MessageRepository(
                     direction = mapped.direction,
                     status = mapped.status,
                     providerId = mapped.providerId,
-                    isMms = mapped.mms,
                 ),
             )
             // IGNORE returns -1 for a row that already exists.
@@ -292,103 +279,8 @@ class MessageRepository(
     }
 
     /**
-     * Persists one inbound MMS.
-     *
-     * The address is the sender (an MMS notification does not carry the whole
-     * member list, so an incoming message lands in the sender's conversation
-     * even when it was addressed to a group). Every attachment is stored as a
-     * row; placeholders arrive with a null [AttachmentPart.filePath] and are
-     * filled in later by a download.
-     *
-     * Returns the row id, or null when the transaction had already been stored.
+     * Persists an outgoing message in the SENDING state, to be updated on callback.
      */
-    suspend fun recordInboundMms(
-        address: String,
-        body: String,
-        subject: String?,
-        timestampMillis: Long,
-        transactionId: String?,
-        attachments: List<AttachmentPart>,
-        downloadState: DownloadState = DownloadState.NONE,
-        contentLocation: String? = null,
-    ): Long? {
-        val key = "mms:${digest("$address|$timestampMillis|${transactionId.orEmpty()}|$body")}"
-        val conversationId = findOrCreateConversation(address, timestampMillis)
-        val rowId = messageDao.insert(
-            MessageEntity(
-                conversationId = conversationId,
-                dedupeKey = key,
-                body = body,
-                sentAt = timestampMillis,
-                direction = MessageDirection.INCOMING,
-                status = MessageStatus.DELIVERED,
-                isMms = true,
-                subject = subject,
-                downloadState = downloadState,
-                transactionId = transactionId,
-                contentLocation = contentLocation,
-            ),
-        )
-        if (rowId == -1L) return null
-
-        bumpUnread(conversationId)
-        storeAttachments(rowId, attachments)
-        return rowId
-    }
-
-    /**
-     * Persists an outgoing MMS in the SENDING state.
-     *
-     * Unlike SMS there is no part callback: the platform does not report MMS
-     * per-part, so the row is corrected once, from the outcome of the MMSC
-     * transaction. The group conversation is keyed on the sorted member set,
-     * but its display address keeps the order the user picked.
-     */
-    suspend fun recordOutgoingMms(
-        recipients: List<String>,
-        subject: String?,
-        body: String,
-        sentAt: Long,
-        attachments: List<AttachmentPart>,
-        simSlot: Int? = null,
-    ): Long {
-        val conversationId = findOrCreateConversation(recipients, sentAt)
-        val rowId = messageDao.insert(
-            MessageEntity(
-                conversationId = conversationId,
-                dedupeKey = "mms-out:$sentAt:${recipients.joinToString("+")}:${UUID.randomUUID()}",
-                body = body,
-                sentAt = sentAt,
-                direction = MessageDirection.OUTGOING,
-                status = MessageStatus.SENDING,
-                partCount = 1,
-                simSlot = simSlot,
-                isMms = true,
-                subject = subject,
-            ),
-        )
-        storeAttachments(rowId, attachments)
-        return rowId
-    }
-
-    private suspend fun storeAttachments(messageId: Long, attachments: List<AttachmentPart>) {
-        if (attachments.isEmpty()) return
-        attachmentDao.insertAll(
-            attachments.mapIndexed { index, part ->
-                AttachmentEntity(
-                    messageId = messageId,
-                    contentType = part.contentType,
-                    fileName = part.fileName,
-                    filePath = part.filePath,
-                    byteSize = part.byteSize,
-                    state = if (part.filePath == null) AttachmentState.RETRIEVABLE else AttachmentState.RETRIEVED,
-                    partIndex = index,
-                )
-            },
-        )
-    }
-
-    /** Persists an outgoing message in the SENDING state, to be updated on callback. */
     suspend fun recordOutgoing(
         address: String,
         body: String,
@@ -468,51 +360,15 @@ class MessageRepository(
     }
 
     /**
-     * Mirrors a received MMS into the provider inbox and links the local row to
-     * it.
-     *
-     * The SMS mirror's contract one level up: the `pdu` row, its From address
-     * and every part go in, and media bytes are streamed through the part URI
-     * the provider mints. The local row keeps its `mms:` key (what a later
-     * import fingerprints an already-stored message against) and gains the
-     * provider id, which turns on the delete and read-state mirroring.
-     *
-     * Returns the provider row id, or null when the write was refused.
-     */
-    suspend fun mirrorInboundMmsToProvider(rowId: Long, message: ProviderMms): Long? {
-        val providerId = telephonyWriter.insertInboundMms(message) ?: return null
-        messageDao.updateProviderId(rowId, providerId)
-        return providerId
-    }
-
-    /**
-     * Mirrors an accepted outbound MMS into the provider's sent table.
-     *
-     * Like the SMS send mirror, the local row adopts the provider's namespaced
-     * dedupe key so the next import recognises the send instead of adding a
-     * second row.
-     */
-    suspend fun mirrorSentMmsToProvider(rowId: Long, message: ProviderMms) {
-        val providerId = telephonyWriter.insertSentMms(message) ?: return
-        messageDao.adoptSentProviderRow(
-            id = rowId,
-            providerId = providerId,
-            dedupeKey = ProviderMessageMapper.dedupeKey(providerId, mms = true),
-        )
-    }
-
-    /**
      * Flips the provider copy of a send the radio turned down, so the system
      * app stops showing it as sent. Rows without a provider copy (the write was
-     * refused, or it never ran because the send failed before acceptance) and
-     * MMS rows (only written to the provider once the MMSC accepts, so a failed
-     * MMS never got one) have nothing to flip.
+     * refused, or it never ran because the send failed before acceptance) have
+     * nothing to flip.
      */
     private suspend fun mirrorFailedSend(id: Long) {
         val row = messageDao.getById(id) ?: return
         val providerId = row.providerId ?: return
-        if (row.isMms) return
-        telephonyWriter.markSentFailed(ProviderRowRef(providerId, isMms = false))
+        telephonyWriter.markSentFailed(ProviderRowRef(providerId))
     }
 
     /**
@@ -527,47 +383,6 @@ class MessageRepository(
     /** One message row, for retrying or inspecting a single message. */
     suspend fun getMessage(id: Long): MessageEntity? = messageDao.getById(id)
 
-    /**
-     * The content a background retry of a failed outgoing MMS needs, read back
-     * from the store because the worker may run in a fresh process with no
-     * composer state. Returns null unless the row is still an outgoing, failed
-     * MMS, so an attempt that races a manual resend or a delete is a no-op
-     * rather than a duplicate send.
-     */
-    suspend fun outgoingMmsRetry(messageId: Long): OutgoingMmsRetry? {
-        val message = messageDao.getById(messageId) ?: return null
-        if (message.direction != MessageDirection.OUTGOING || !message.isMms ||
-            message.status != MessageStatus.FAILED
-        ) {
-            return null
-        }
-        val recipients = conversationDao.getById(message.conversationId)
-            ?.displayAddress
-            ?.let(AddressNormalizer::membersOf)
-            ?.filter(String::isNotBlank)
-        if (recipients.isNullOrEmpty()) return null
-        val attachments = attachmentDao.getForMessage(messageId).map {
-            AttachmentPart(
-                fileName = it.fileName,
-                contentType = it.contentType,
-                filePath = it.filePath,
-                byteSize = it.byteSize,
-            )
-        }
-        return OutgoingMmsRetry(
-            rowId = message.id,
-            recipients = recipients,
-            subject = message.subject,
-            body = message.body,
-            sentAt = message.sentAt,
-            attachments = attachments,
-        )
-    }
-
-    /** Puts a failed outgoing MMS back to SENDING; false when it is no longer failed. */
-    suspend fun markFailedMmsSending(messageId: Long): Boolean =
-        messageDao.markFailedMmsSending(messageId) > 0
-
     /** Messages and conversations whose body or address matches, newest first. */
     fun observeMessageSearch(query: String): Flow<List<MessageSearchHit>> =
         messageDao.searchMessages(query)
@@ -576,75 +391,9 @@ class MessageRepository(
     fun observeDraft(conversationId: Long): Flow<String?> =
         draftDao.observe(conversationId).map { it.firstOrNull() }
 
-    /** The composer's unsent-attachment queue, restored after restarts. */
-    fun observePendingAttachments(conversationId: Long): Flow<List<AttachmentPart>> =
-        draftDao.observePending(conversationId).map { row ->
-            PendingAttachmentsCodec.decode(row.firstOrNull())
-        }
-
-    /** The queue as stored right now, for hydrating a freshly opened thread. */
-    suspend fun getPendingAttachments(conversationId: Long): List<AttachmentPart> =
-        draftDao.row(conversationId)
-            ?.pendingAttachments
-            ?.let { PendingAttachmentsCodec.decode(it) }
-            .orEmpty()
-
-    /** Attachments of one message, in PDU part order. */
-    fun observeAttachments(messageId: Long): Flow<List<AttachmentEntity>> =
-        attachmentDao.observeForMessage(messageId)
-
-    /** Attachments of all messages in a conversation, in PDU part order. */
-    fun observeConversationAttachments(conversationId: Long): Flow<List<AttachmentEntity>> =
-        attachmentDao.observeForConversation(conversationId)
-
-    /** Attachments of one message, for building a share or a send PDU. */
-    suspend fun getAttachments(messageId: Long): List<AttachmentEntity> =
-        attachmentDao.getForMessage(messageId)
-
-    /**
-     * Every attachment file the store still points at, from both the message
-     * attachments and the composers' unsent queues. The orphan sweep deletes
-     * only files outside this set, so a queued-but-unsent pick (which has no
-     * message row) survives.
-     */
-    suspend fun referencedAttachmentPaths(): Set<String> {
-        val fromMessages = attachmentDao.allFilePaths()
-        val fromQueues = draftDao.allPendingAttachments()
-            .flatMap { PendingAttachmentsCodec.decode(it) }
-            .mapNotNull { it.filePath }
-        return (fromMessages + fromQueues).toSet()
-    }
-
-    /** Marks a placeholder attachment downloaded to disk. */
-    suspend fun markAttachmentRetrieved(id: Long, filePath: String, byteSize: Long) =
-        attachmentDao.markRetrieved(id, filePath, byteSize)
-
-    /** Adds an attachment a later download brought in for an existing message. */
-    suspend fun addAttachment(messageId: Long, part: AttachmentPart) {
-        attachmentDao.insert(
-            AttachmentEntity(
-                messageId = messageId,
-                contentType = part.contentType,
-                fileName = part.fileName,
-                filePath = part.filePath,
-                byteSize = part.byteSize,
-                state = AttachmentState.RETRIEVED,
-            ),
-        )
-    }
-
-    /** Tracks an inbound MMS's media lifecycle for the thread's download action. */
-    suspend fun markDownloadState(messageId: Long, state: DownloadState) =
-        messageDao.updateDownloadState(messageId, state)
-
-    /** Updates the body and subject of an MMS row after retrieval. */
-    suspend fun updateMessageContent(messageId: Long, body: String, subject: String?) =
-        messageDao.updateContent(messageId, body, subject)
-
     /**
      * Keeps the composed-but-unsent text for a conversation across restarts.
-     * Blanking the text clears the stored body but leaves an attachment queue
-     * in place, so a retry after a failed send does not have to re-pick files.
+     * Blanking the text clears the stored body.
      */
     suspend fun saveDraft(conversationId: Long, body: String) {
         val normalized = if (body.isBlank()) "" else body
@@ -656,20 +405,32 @@ class MessageRepository(
         }
     }
 
-    /** Stores the composer's unsent-attachment queue for one conversation. */
-    suspend fun savePendingAttachments(conversationId: Long, attachments: List<AttachmentPart>) {
-        val encoded = PendingAttachmentsCodec.encode(attachments)
-        if (draftDao.updatePending(conversationId, encoded) == 0 && encoded != null) {
-            draftDao.save(
-                DraftEntity(
-                    conversationId = conversationId,
-                    body = "",
-                    pendingAttachments = encoded,
-                ),
-            )
+    /** Creates or reuses a conversation so the standalone composer can keep a draft. */
+    suspend fun saveDraftForRecipient(recipient: String, body: String, draftId: Long? = null): Long? {
+        val members = AddressNormalizer.membersOf(recipient)
+        if (members.isEmpty()) return null
+        if (draftId != null) {
+            if (body.isBlank()) draftDao.deleteById(draftId)
+            else draftDao.updateBodyById(draftId, body)
+            return draftId
         }
-        if (attachments.isEmpty()) {
-            draftDao.deleteIfEmpty(conversationId)
+        if (body.isBlank()) {
+            conversationDao.getByAddressKey(AddressNormalizer.groupKey(members))?.let {
+                saveDraft(it.id, "")
+                return it.id
+            }
+            return null
+        }
+        val conversationId = findOrCreateConversation(members, System.currentTimeMillis())
+        draftDao.save(DraftEntity(conversationId = conversationId, body = body))
+        return conversationId
+    }
+
+    suspend fun deleteDraft(draftId: Long) {
+        val draft = draftDao.byId(draftId) ?: return
+        draftDao.deleteById(draftId)
+        if (messageDao.countInConversation(draft.conversationId) == 0) {
+            conversationDao.delete(draft.conversationId)
         }
     }
 
@@ -745,35 +506,5 @@ class MessageRepository(
          * results after a short period), so it is safe to fail at startup.
          */
         const val STUCK_WINDOW_MILLIS = 5 * 60 * 1000L
-
-        fun digest(input: String): String {
-            val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray(Charsets.UTF_8))
-            return bytes.joinToString(separator = "") { byte -> "%02x".format(byte) }
-        }
     }
 }
-
-/**
- * An attachment carried by an MMS, either on disk already (outgoing media,
- * embedded inbound parts) or as a placeholder to be downloaded later.
- */
-data class AttachmentPart(
-    val fileName: String,
-    val contentType: String,
-    val filePath: String?,
-    val byteSize: Long,
-)
-
-/**
- * A failed outgoing MMS reconstructed from the store, for the send-retry worker:
- * everything the original send carried, so a retry in a new process is the same
- * message rather than an empty one.
- */
-data class OutgoingMmsRetry(
-    val rowId: Long,
-    val recipients: List<String>,
-    val subject: String?,
-    val body: String,
-    val sentAt: Long,
-    val attachments: List<AttachmentPart>,
-)

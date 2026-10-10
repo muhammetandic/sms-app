@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
@@ -26,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -33,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,7 +50,10 @@ import com.oaktech.smsapp.sms.block.BlockedSenders
 import com.oaktech.smsapp.sms.send.SmsSubscription
 import com.oaktech.smsapp.sms.send.SmsSubscriptionSettings
 import com.oaktech.smsapp.sms.send.activeSmsSubscriptions
+import com.oaktech.smsapp.notify.NotificationActionPreferences
+import com.oaktech.smsapp.notify.NotificationActionReceiver
 import com.oaktech.smsapp.ui.rememberSmsRoleState
+import kotlinx.coroutines.launch
 
 /**
  * The settings screen.
@@ -62,6 +68,7 @@ import com.oaktech.smsapp.ui.rememberSmsRoleState
 fun SettingsRoute(onBack: () -> Unit) {
     val context = LocalContext.current
     val roleState = rememberSmsRoleState()
+    val roleRequestScope = rememberCoroutineScope()
 
     val versionName = remember {
         // PackageManager only hands out PackageInfoFlags from API 33; the
@@ -87,6 +94,20 @@ fun SettingsRoute(onBack: () -> Unit) {
         mutableStateOf(subscriptionSettings.preferredSubscriptionId())
     }
 
+    val notificationActions = remember { NotificationActionPreferences(context) }
+    var notificationReplyEnabled by remember {
+        mutableStateOf(notificationActions.isEnabled(NotificationActionReceiver.ACTION_REPLY))
+    }
+    var notificationReadEnabled by remember {
+        mutableStateOf(notificationActions.isEnabled(NotificationActionReceiver.ACTION_MARK_READ))
+    }
+    var notificationSpamEnabled by remember {
+        mutableStateOf(notificationActions.isEnabled(NotificationActionReceiver.ACTION_MARK_SPAM))
+    }
+    var notificationDeleteEnabled by remember {
+        mutableStateOf(notificationActions.isEnabled(NotificationActionReceiver.ACTION_DELETE))
+    }
+
     val blockedSenders = remember { BlockedSenders(context) }
     val blockedList by blockedSenders.blocks.collectAsStateWithLifecycle()
 
@@ -96,7 +117,7 @@ fun SettingsRoute(onBack: () -> Unit) {
     // before drawing anything.
     val setDefaultSmsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult(),
-    ) { roleState.refresh() }
+    ) { roleRequestScope.launch { roleState.refreshAfterRequest() } }
 
     val setDefaultSms: () -> Unit = {
         roleState.requestIntent()?.let { intent ->
@@ -109,12 +130,32 @@ fun SettingsRoute(onBack: () -> Unit) {
         versionName = versionName,
         subscriptions = subscriptions,
         preferredSubscriptionId = preferredSubscriptionId,
+        notificationReplyEnabled = notificationReplyEnabled,
+        notificationReadEnabled = notificationReadEnabled,
+        notificationSpamEnabled = notificationSpamEnabled,
+        notificationDeleteEnabled = notificationDeleteEnabled,
         blockedSenders = blockedList,
         onBack = onBack,
         onSetDefaultSms = setDefaultSms,
         onChooseSubscription = { id ->
             subscriptionSettings.setPreferredSubscriptionId(id)
             preferredSubscriptionId = id
+        },
+        onNotificationReplyChanged = {
+            notificationActions.setEnabled(NotificationActionReceiver.ACTION_REPLY, it)
+            notificationReplyEnabled = it
+        },
+        onNotificationReadChanged = {
+            notificationActions.setEnabled(NotificationActionReceiver.ACTION_MARK_READ, it)
+            notificationReadEnabled = it
+        },
+        onNotificationSpamChanged = {
+            notificationActions.setEnabled(NotificationActionReceiver.ACTION_MARK_SPAM, it)
+            notificationSpamEnabled = it
+        },
+        onNotificationDeleteChanged = {
+            notificationActions.setEnabled(NotificationActionReceiver.ACTION_DELETE, it)
+            notificationDeleteEnabled = it
         },
         onBlock = { blockedSenders.add(it) },
         onUnblock = { blockedSenders.remove(it) },
@@ -128,10 +169,18 @@ fun SettingsScreen(
     versionName: String,
     subscriptions: List<SmsSubscription>,
     preferredSubscriptionId: Int?,
+    notificationReplyEnabled: Boolean,
+    notificationReadEnabled: Boolean,
+    notificationSpamEnabled: Boolean,
+    notificationDeleteEnabled: Boolean,
     blockedSenders: Set<String>,
     onBack: () -> Unit,
     onSetDefaultSms: () -> Unit,
     onChooseSubscription: (Int?) -> Unit,
+    onNotificationReplyChanged: (Boolean) -> Unit,
+    onNotificationReadChanged: (Boolean) -> Unit,
+    onNotificationSpamChanged: (Boolean) -> Unit,
+    onNotificationDeleteChanged: (Boolean) -> Unit,
     onBlock: (String) -> Unit,
     onUnblock: (String) -> Unit,
 ) {
@@ -211,6 +260,38 @@ fun SettingsScreen(
                 }
             }
 
+            item(key = "notification_actions") {
+                SettingsSection(title = stringResource(R.string.settings_notification_actions)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = stringResource(R.string.settings_notification_actions_body),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        NotificationActionSetting(
+                            label = stringResource(R.string.notification_action_reply),
+                            checked = notificationReplyEnabled,
+                            onCheckedChange = onNotificationReplyChanged,
+                        )
+                        NotificationActionSetting(
+                            label = stringResource(R.string.notification_action_read),
+                            checked = notificationReadEnabled,
+                            onCheckedChange = onNotificationReadChanged,
+                        )
+                        NotificationActionSetting(
+                            label = stringResource(R.string.notification_action_spam),
+                            checked = notificationSpamEnabled,
+                            onCheckedChange = onNotificationSpamChanged,
+                        )
+                        NotificationActionSetting(
+                            label = stringResource(R.string.notification_action_delete),
+                            checked = notificationDeleteEnabled,
+                            onCheckedChange = onNotificationDeleteChanged,
+                        )
+                    }
+                }
+            }
+
             // The live blocked list is read from the store; the input is local
             // to this screen. Clearing on submit is fine whether or not the add
             // succeeded: a duplicate or empty number simply adds nothing.
@@ -233,6 +314,7 @@ fun SettingsScreen(
                                 placeholder = {
                                     Text(stringResource(R.string.settings_block_hint))
                                 },
+                                shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
                                 modifier = Modifier.weight(1f),
                             )
@@ -297,6 +379,22 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun NotificationActionSetting(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodyLarge)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

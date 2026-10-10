@@ -38,7 +38,7 @@ data class ConversationRow(
     val isPinned: Boolean = false,
     /** Alerts silenced; the row stays in the inbox with its unread badge. */
     val isMuted: Boolean = false,
-    /** True when more than one recipient shares the thread (an MMS group). */
+    /** True when more than one recipient shares the thread. */
     val isGroup: Boolean = false,
 ) {
     /** Contact name when one resolved, otherwise the number as stored. */
@@ -89,6 +89,7 @@ class ConversationsViewModel(
         if (!resolver.hasPermission()) return
 
         viewModelScope.launch {
+            resolver.preload()
             val summaries = repository.observeConversations().first()
             val resolved = summaries.associate { summary ->
                 summary.addressKey to resolver.displayName(summary.displayAddress)

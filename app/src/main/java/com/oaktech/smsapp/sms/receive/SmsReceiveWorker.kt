@@ -34,7 +34,7 @@ object SmsReceiveWorker {
         }
     }
 
-    private suspend fun handle(context: Context, parts: List<SmsPart>) {
+    internal suspend fun handle(context: Context, parts: List<SmsPart>) {
         val message = MultipartReassembler.reassemble(parts) ?: run {
             Log.w(LogTags.RECEIVE, "Discarded malformed multipart message (${parts.size} part(s))")
             return

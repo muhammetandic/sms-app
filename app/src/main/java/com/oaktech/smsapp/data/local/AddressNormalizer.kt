@@ -38,11 +38,9 @@ object AddressNormalizer {
     /**
      * Conversation key for a set of participants.
      *
-     * A single participant must land in the same conversation as a plain SMS to
-     * the same number, so MMS and SMS to one person share a thread. Two or more
-     * form a group that is its own conversation, keyed on the sorted normalized
-     * members so the order a contact list happens to list them in is irrelevant
-     * to identity.
+     * A single participant keeps its own conversation. Two or more form a group
+     * that is its own conversation, keyed on the sorted normalized members so
+     * the order a contact list happens to list them in is irrelevant to identity.
      */
     fun groupKey(members: List<String>): String {
         val normalized = members.map { conversationKey(it) }.sorted()

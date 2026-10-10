@@ -12,7 +12,7 @@ import org.robolectric.shadows.ShadowApplication
 /**
  * The permission set is load-bearing for the receive path: a permission that is
  * declared but never requested behaves exactly like a broadcast the platform
- * chose not to send, so the MMS receivers would sit idle with nothing in the
+ * chose not to send, so the SMS receiver would sit idle with nothing in the
  * logs to say why.
  */
 @RunWith(RobolectricTestRunner::class)
@@ -21,9 +21,12 @@ class SmsPermissionsTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
 
     @Test
-    fun `mms and wap push are part of the essential set`() {
-        assertTrue(SmsPermissions.essential.contains(Manifest.permission.RECEIVE_MMS))
+    fun `wap push stays essential for the sms role receiver`() {
+        // The app does not process MMS, but ROLE_SMS requires a WAP_PUSH_DELIVER
+        // receiver and the platform can drop that broadcast without the
+        // permission. RECEIVE_MMS, by contrast, guards nothing here.
         assertTrue(SmsPermissions.essential.contains(Manifest.permission.RECEIVE_WAP_PUSH))
+        assertFalse(SmsPermissions.essential.contains(Manifest.permission.RECEIVE_MMS))
     }
 
     @Test
@@ -31,7 +34,6 @@ class SmsPermissionsTest {
         assertTrue(SmsPermissions.requiresSmsRole(Manifest.permission.READ_SMS))
         assertTrue(SmsPermissions.requiresSmsRole(Manifest.permission.RECEIVE_SMS))
         assertTrue(SmsPermissions.requiresSmsRole(Manifest.permission.SEND_SMS))
-        assertTrue(SmsPermissions.requiresSmsRole(Manifest.permission.RECEIVE_MMS))
         assertTrue(SmsPermissions.requiresSmsRole(Manifest.permission.RECEIVE_WAP_PUSH))
 
         assertFalse(SmsPermissions.requiresSmsRole(Manifest.permission.READ_CONTACTS))
@@ -43,10 +45,10 @@ class SmsPermissionsTest {
     fun `one denied essential permission is enough to be not all granted`() {
         val shadow = ShadowApplication.getInstance()
         shadow.grantPermissions(*SmsPermissions.essential.toTypedArray())
-        shadow.denyPermissions(Manifest.permission.RECEIVE_MMS)
+        shadow.denyPermissions(Manifest.permission.RECEIVE_SMS)
         assertFalse(SmsPermissions.allGranted(context))
 
-        shadow.grantPermissions(Manifest.permission.RECEIVE_MMS)
+        shadow.grantPermissions(Manifest.permission.RECEIVE_SMS)
         assertTrue(SmsPermissions.allGranted(context))
     }
 }
