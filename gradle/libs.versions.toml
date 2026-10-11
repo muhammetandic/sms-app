@@ -1,23 +1,26 @@
 [versions]
-agp = "8.7.3"
-kotlin = "2.0.21"
-ksp = "2.0.21-1.0.28"
-coreKtx = "1.15.0"
-lifecycle = "2.8.7"
-activityCompose = "1.9.3"
-composeBom = "2024.12.01"
-room = "2.6.1"
+agp = "9.4.1"
+kotlin = "2.2.10"
+ksp = "2.2.10-2.0.2"
+coreKtx = "1.19.1"
+lifecycle = "2.11.0"
+activityCompose = "1.13.0"
+composeBom = "2026.09.00"
+room = "2.8.5"
 coreTesting = "2.2.0"
 junit = "4.13.2"
-androidxJunit = "1.2.1"
-androidxTestCore = "1.6.1"
-navigation = "2.8.5"
-espresso = "3.6.1"
+androidxJunit = "1.3.0"
+androidxTestCore = "1.7.0"
+navigation = "2.10.2"
+espresso = "3.7.0"
 turbine = "1.2.0"
 coroutinesTest = "1.9.0"
 robolectric = "4.14.1"
-workManager = "2.10.0"
+workManager = "2.12.0"
 coil = "2.7.0"
+# material-icons-core is frozen (last release 1.7.8) and no longer pulls in
+# through material3; the app imports Icons + filled/automirrored glyphs from it.
+materialIconsCore = "1.7.8"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -32,6 +35,7 @@ androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
+androidx-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core", version.ref = "materialIconsCore" }
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
@@ -50,6 +54,5 @@ robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

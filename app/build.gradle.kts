@@ -1,18 +1,17 @@
 plugins {
     alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
 }
 
 android {
     namespace = "com.oaktech.smsapp"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.oaktech.smsapp"
         minSdk = 30
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
 
@@ -41,7 +40,7 @@ android {
         // assets (test source-set assets are not merged there), so the schemas
         // are wired into the debug asset source set only. Being debug-only,
         // no schema JSON is shipped in the release APK.
-        getByName("debug").assets.srcDirs("$projectDir/schemas")
+        getByName("debug").assets.directories.add("$projectDir/schemas")
     }
 
     buildTypes {
@@ -82,10 +81,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-
     buildFeatures {
         compose = true
     }
@@ -114,6 +109,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation(libs.androidx.material.icons.core)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
