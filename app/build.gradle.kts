@@ -63,6 +63,17 @@ android {
         // NotificationChannels and the notification action labels need.
         unitTests {
             isIncludeAndroidResources = true
+
+            // Robolectric loads Conscrypt's JNI library by lowercasing the OS
+            // name through the JVM default locale. Under a Turkish locale that
+            // turns "Linux" into "lınux" (dotless i), the native-library lookup
+            // misses, and every Robolectric test dies with UnsatisfiedLinkError.
+            // Pinning the test JVM to English keeps the name stable regardless
+            // of the developer's shell locale.
+            all {
+                it.systemProperty("user.language", "en")
+                it.systemProperty("user.country", "US")
+            }
         }
     }
 
