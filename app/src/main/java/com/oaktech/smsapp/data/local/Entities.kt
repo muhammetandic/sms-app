@@ -132,7 +132,10 @@ data class MessageEntity(
  * is sent or the draft is cleared, so a survive-and-restore across process death
  * is a plain row in the store rather than a saveable in the activity state.
  */
-@Entity(tableName = "drafts")
+@Entity(
+    tableName = "drafts",
+    indices = [Index(value = ["conversation_id"])],
+)
 data class DraftEntity(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

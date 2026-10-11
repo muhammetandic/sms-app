@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [ConversationEntity::class, MessageEntity::class, DraftEntity::class],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -310,6 +310,24 @@ abstract class SmsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Indexes drafts by conversation.
+         *
+         * A draft is looked up by its conversation on every thread open and every
+         * editor keystroke (the DAO updates the latest row for a conversation),
+         * and the old table had no index for that. The messages table has always
+         * indexed its conversation column; this brings drafts in line. Purely an
+         * index, so no row is rewritten.
+         */
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_drafts_conversation_id` " +
+                        "ON `drafts` (`conversation_id`)",
+                )
+            }
+        }
+
         @Volatile
         private var instance: SmsDatabase? = null
 
@@ -333,6 +351,7 @@ abstract class SmsDatabase : RoomDatabase() {
                     MIGRATION_10_11,
                     MIGRATION_11_12,
                     MIGRATION_12_13,
+                    MIGRATION_13_14,
                 )
                 .build()
     }

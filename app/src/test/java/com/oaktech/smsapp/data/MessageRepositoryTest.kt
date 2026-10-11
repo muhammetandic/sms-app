@@ -85,6 +85,20 @@ class MessageRepositoryTest {
     }
 
     @Test
+    fun `a draft to a new recipient stays out of the inbox`() = runTest {
+        repository.saveDraftForRecipient("+15551234567", "not sent yet")
+
+        // The draft belongs on the drafts screen; an inbox row with no message
+        // and no snippet would be a blank entry the user cannot act on.
+        assertTrue(repository.observeConversations().first().isEmpty())
+        assertEquals("not sent yet", repository.observeDraftConversations().first().single().body)
+
+        // Sending it gives the conversation a message, so it joins the inbox.
+        repository.recordOutgoing("+15551234567", "not sent yet", 1_000L)
+        assertEquals(1, repository.observeConversations().first().size)
+    }
+
+    @Test
     fun `duplicate inbound message is ignored`() = runTest {
         repository.recordInbound(inbound(), partCount = 1)
         val second = repository.recordInbound(inbound(), partCount = 1)

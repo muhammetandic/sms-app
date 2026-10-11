@@ -422,6 +422,9 @@ class MessageRepository(
             return null
         }
         val conversationId = findOrCreateConversation(members, System.currentTimeMillis())
+        // A standalone compose session owns its own draft row: a contact may
+        // have several independent unsent messages, which the drafts screen
+        // lists separately. Editing one of them passes its id above instead.
         draftDao.save(DraftEntity(conversationId = conversationId, body = body))
         return conversationId
     }

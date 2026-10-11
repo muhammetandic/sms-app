@@ -58,6 +58,7 @@ class ComposeTestTags {
 fun ComposeRoute(
     viewModel: ComposeViewModel,
     contactName: String? = null,
+    launchRecipient: String = "",
     onBack: () -> Unit,
     onRequestSmsRole: () -> Unit,
     isSmsRoleHeld: Boolean,
@@ -87,6 +88,7 @@ fun ComposeRoute(
     ComposeScreen(
         state = state,
         contactName = contactName,
+        launchRecipient = launchRecipient,
         snackbarHostState = snackbarHostState,
         isSmsRoleHeld = isSmsRoleHeld,
         onBack = onBack,
@@ -103,6 +105,7 @@ fun ComposeRoute(
 fun ComposeScreen(
     state: ComposeUiState,
     contactName: String? = null,
+    launchRecipient: String = "",
     snackbarHostState: SnackbarHostState,
     isSmsRoleHeld: Boolean,
     onBack: () -> Unit,
@@ -148,7 +151,14 @@ fun ComposeScreen(
             }
 
             val recipientLabel = stringResource(R.string.compose_recipient_label)
-            val shownContactName = contactName?.takeIf { !state.recipient.contains(',') }
+            // The contact name stands in for the number only while the field
+            // still holds the recipient it was resolved from. Once the user
+            // edits to a different single address the name is stale, and showing
+            // it would both mislabel and lock the field, so it steps aside.
+            val shownContactName = contactName?.takeIf {
+                !state.recipient.contains(',') &&
+                    state.recipient.trim() == launchRecipient.trim()
+            }
             OutlinedTextField(
                 // Keep the address in the ViewModel for sending, but show the
                 // contact's display name when this recipient came from a

@@ -2,7 +2,7 @@
 
 Android SMS app. Kotlin + Jetpack Compose, `minSdk 30` (Android 11), `compileSdk`/`targetSdk` 36.
 
-Sideloaded, not distributed through Play. SMS and MMS with group messaging, dual-SIM send choice, a block list, and a settings screen. No backend, no cross-device sync.
+Sideloaded, not distributed through Play. SMS with dual-SIM send choice, a block list, a drafts screen, and a settings screen. No backend, no cross-device sync.
 
 ## Build
 
@@ -25,7 +25,7 @@ Android grants `ROLE_SMS` only to an app that declares the full eligible compone
 | Component | Purpose |
 | --- | --- |
 | `SmsDeliverReceiver` | Receives `SMS_DELIVER`, delivered only to the default SMS app |
-| `WapPushDeliverReceiver` | Receives `WAP_PUSH_DELIVER`/`WAP_PUSH_RECEIVED` MMS pushes and routes them through `MmsReceiveWorker` |
+| `WapPushDeliverReceiver` | Deliberate no-op, declared only to qualify for `ROLE_SMS`; the app processes SMS only |
 | `RespondViaMessageService` | Required for role qualification; handles reply-with-message |
 
 Requesting the role goes through `RoleManager.ROLE_SMS`. Losing the role mid-session revokes SMS permissions immediately, so the UI must degrade to read-only rather than crash.
@@ -57,11 +57,10 @@ app/src/main/java/com/oaktech/smsapp/
     telephony/             Telephony provider reads
   sms/
     receive/               Incoming SMS: receiver, worker, reassembly, dedupe key
-    mms/                   MMS: PDU build/parse, poster, retrieve, send coordinator
     block/                 Persisted block list applied on arrival
     respond/               Respond-via-message service
     role/                  ROLE_SMS wrapper
-    send/                  SMS/MMS routing, multi-part send-result aggregation, SIM pick
+    send/                  SMS routing, multi-part send-result aggregation, SIM pick
   ui/theme/                Material 3 theme
   ui/settings/             Settings: default-app role, SIM choice, block list, about
 ```

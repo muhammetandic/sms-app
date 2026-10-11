@@ -45,12 +45,20 @@ class ComposeViewModel(
     initialDraft: String,
     private val isSmsRoleHeld: () -> Boolean,
     private val send: suspend (String, String) -> SendOutcome,
+    autoSend: Boolean = false,
 ) : ViewModel() {
 
     private val mutableState = MutableStateFlow(
         ComposeUiState(recipient = initialRecipient, draft = initialDraft),
     )
     val uiState: StateFlow<ComposeUiState> = mutableState.asStateFlow()
+
+    init {
+        // The drafts list's "send" action opens this screen already sending. The
+        // role is re-checked here for the same reason the UI disables the button
+        // without it: a stale grant must not put a message on the radio.
+        if (autoSend && isSmsRoleHeld()) onSend()
+    }
 
     fun onRecipientChanged(value: String) = mutableState.update {
         it.copy(recipient = value, error = null)
@@ -127,10 +135,11 @@ class ComposeViewModel(
             initialDraft: String,
             isSmsRoleHeld: () -> Boolean,
             send: suspend (String, String) -> SendOutcome,
+            autoSend: Boolean = false,
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                ComposeViewModel(initialRecipient, initialDraft, isSmsRoleHeld, send) as T
+                ComposeViewModel(initialRecipient, initialDraft, isSmsRoleHeld, send, autoSend) as T
         }
     }
 }

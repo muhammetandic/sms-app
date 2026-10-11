@@ -23,10 +23,11 @@ class ComposeViewModelTest {
         recipient: String = "+15551234567",
         draft: String = "",
         roleHeld: Boolean = true,
+        autoSend: Boolean = false,
         send: suspend (String, String) -> SendOutcome = { _, _ ->
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
         },
-    ) = ComposeViewModel(recipient, draft, { roleHeld }, send)
+    ) = ComposeViewModel(recipient, draft, { roleHeld }, send, autoSend)
 
     @Test
     fun `the parsed intent pre-fills the composer`() = runTest(mainDispatcherRule.testDispatcher) {
@@ -152,6 +153,36 @@ class ComposeViewModelTest {
 
             model.uiState.first { it.isFinished }
             assertEquals(listOf("+15551234567", "+15559876543"), sentTo)
+        }
+
+    @Test
+    fun `an auto-send request sends on open`() = runTest(mainDispatcherRule.testDispatcher) {
+        var sentBody: String? = null
+        val model = viewModel(draft = "send me now", autoSend = true, send = { _, body ->
+            sentBody = body
+            SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
+        })
+
+        model.uiState.first { it.isFinished }
+        assertEquals("send me now", sentBody)
+    }
+
+    @Test
+    fun `an auto-send request without the role holds the draft back`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            var sendCount = 0
+            val model = viewModel(
+                draft = "not yet",
+                roleHeld = false,
+                autoSend = true,
+                send = { _, _ ->
+                    sendCount += 1
+                    SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
+                },
+            )
+
+            assertEquals(0, sendCount)
+            assertEquals("not yet", model.uiState.first { it.draft == "not yet" }.draft)
         }
 
     @Test

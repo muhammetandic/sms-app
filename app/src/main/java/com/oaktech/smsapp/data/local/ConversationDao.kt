@@ -32,9 +32,15 @@ interface ConversationDao {
     /**
      * The inbox: everything not moved to spam. Pinned rows float above the
      * rest, each group ordered by most recent message.
+     *
+     * Message-less conversations are excluded: the only way one exists is a
+     * draft composed to a new recipient, and that draft belongs on the drafts
+     * screen rather than as a blank row with no snippet. Once the draft is sent
+     * the conversation has a message and joins the inbox normally.
      */
     @Query(
         "$SNIPPET_QUERY WHERE c.is_spam = 0 " +
+            "AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id) " +
             "ORDER BY c.is_pinned DESC, c.last_message_at DESC",
     )
     fun observeConversations(): Flow<List<ConversationSummary>>

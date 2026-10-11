@@ -52,9 +52,9 @@ class ProviderChangeObserverTest {
         var imports = 0
         val observer = observer(debounceMillis = 0L) { imports += 1 }
 
-        // A burst of row writes, as a multi-part message or an MMS with
-        // companion rows, must coalesce into a single import: each fires the
-        // observer, but the debounce only lets the last one through.
+        // A burst of row writes, as when several messages arrive together,
+        // must coalesce into a single import: each fires the observer, but the
+        // debounce only lets the last one through.
         observer.contentObserver.onChange(false, null)
         observer.contentObserver.onChange(false, null)
         observer.contentObserver.onChange(false, null)

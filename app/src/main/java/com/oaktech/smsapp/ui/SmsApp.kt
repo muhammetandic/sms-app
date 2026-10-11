@@ -158,7 +158,18 @@ fun SmsApp(
 }
 
 /** A SENDTO request from another app, parsed into the composer. */
-data class ComposeRequest(val recipient: String, val body: String, val draftId: Long? = null)
+data class ComposeRequest(
+    val recipient: String,
+    val body: String,
+    val draftId: Long? = null,
+    /**
+     * True when the draft list's "send" action opened this composer: the message
+     * is put on the wire immediately instead of waiting for a second tap. It
+     * still runs through [ComposeViewModel.onSend], so an invalid recipient
+     * surfaces the normal inline error rather than sending blind.
+     */
+    val autoSend: Boolean = false,
+)
 
 private tailrec fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
     is android.app.Activity -> this
@@ -294,6 +305,7 @@ private fun SmsNavHost(
                 factory = ComposeViewModel.factory(
                     initialRecipient = request?.recipient.orEmpty(),
                     initialDraft = request?.body.orEmpty(),
+                    autoSend = request?.autoSend == true,
                     isSmsRoleHeld = isSmsRoleHeld,
                     send = { address, body ->
                         SendGraph.coordinator(context).send(address, body)
@@ -310,6 +322,7 @@ private fun SmsNavHost(
             ComposeRoute(
                 viewModel = viewModel,
                 contactName = composeContactName,
+                launchRecipient = request?.recipient.orEmpty(),
                 onBack = {
                     val composeState = viewModel.uiState.value
                     navigationScope.launch {
@@ -322,7 +335,11 @@ private fun SmsNavHost(
                             request?.draftId,
                         )
                         servedComposeRequest = null
-                        if (!navController.popBackStack(Routes.CONVERSATIONS, false)) {
+                        // Pop one destination so the composer returns to
+                        // whichever screen opened it — the thread, the drafts
+                        // list or the inbox — rather than always jumping to the
+                        // inbox and skipping the one underneath.
+                        if (!navController.popBackStack()) {
                             navController.context.findActivity()?.finish()
                         }
                     }
@@ -364,10 +381,14 @@ private fun SmsNavHost(
                     navController.navigate(Routes.COMPOSE)
                 },
                 onSendDraft = { row ->
+                    // Same composer, but it sends on open: the row already
+                    // showed the body, so a second tap to reach the same send
+                    // button is one step too many.
                     servedComposeRequest = ComposeRequest(
                         recipient = row.address,
                         body = row.snippet,
                         draftId = row.id,
+                        autoSend = true,
                     )
                     navController.navigate(Routes.COMPOSE)
                 },

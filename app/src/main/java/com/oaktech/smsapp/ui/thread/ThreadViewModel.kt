@@ -8,9 +8,11 @@ import com.oaktech.smsapp.data.MessageRepository
 import com.oaktech.smsapp.data.local.MessageDirection
 import com.oaktech.smsapp.data.local.MessageEntity
 import com.oaktech.smsapp.data.local.MessageStatus
+import com.oaktech.smsapp.sms.receive.LogTags
 import com.oaktech.smsapp.sms.send.SendOutcome
 import com.oaktech.smsapp.sms.send.SendState
 import com.oaktech.smsapp.ui.TimeFormat
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -134,8 +136,12 @@ class ThreadViewModel(
                 if (outcome.state == SendState.FAILED) {
                     lastFailure.value = ThreadFailure.SEND
                 }
+            } catch (cancellation: CancellationException) {
+                // Cancellation is not a send failure: swallowing it would leave
+                // the coroutine running past the ViewModel's lifetime.
+                throw cancellation
             } catch (throwable: Throwable) {
-                Log.e("SmsStore", "SMS send failed unexpectedly", throwable)
+                Log.e(LogTags.STORE, "SMS send failed unexpectedly", throwable)
                 lastFailure.value = ThreadFailure.SEND
             } finally {
                 sending.value = false
@@ -167,6 +173,11 @@ class ThreadViewModel(
                 if (outcome.state == SendState.FAILED) {
                     lastFailure.value = ThreadFailure.SEND
                 }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (throwable: Throwable) {
+                Log.e(LogTags.STORE, "SMS resend failed unexpectedly", throwable)
+                lastFailure.value = ThreadFailure.SEND
             } finally {
                 sending.value = false
             }
