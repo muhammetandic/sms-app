@@ -2,4 +2,13 @@
 <resources>
     <!-- Must match the dark scheme's surface, or the launch frame flashes light. -->
     <color name="window_background">#101410</color>
+
+    <!-- The dark scheme's primary, so the notification accent reads on dark. -->
+    <color name="notification_accent">#8AD8A0</color>
+
+    <!-- Lighter per-option tints for the dark notification surface. -->
+    <color name="notification_action_reply">#81C995</color>
+    <color name="notification_action_read">#8AB4F8</color>
+    <color name="notification_action_spam">#FDD663</color>
+    <color name="notification_action_delete">#F28B82</color>
 </resources>

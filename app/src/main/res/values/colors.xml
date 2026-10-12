@@ -8,4 +8,21 @@
       flashing white on a dark system.
     -->
     <color name="window_background">#FBFDF8</color>
+
+    <!--
+      Notification accent. The platform tints the notification's app name and
+      small icon from it. Matches the light scheme's primary; the -night variant
+      uses the dark scheme's so it stays legible on a dark notification surface.
+    -->
+    <color name="notification_accent">#1B6C3A</color>
+
+    <!--
+      Per-option tints for the notification's action labels. Each option carries
+      its own hue so the row reads as distinct choices; the -night variants are
+      the lighter pastels the darker notification surface needs.
+    -->
+    <color name="notification_action_reply">#2E7D32</color>
+    <color name="notification_action_read">#1565C0</color>
+    <color name="notification_action_spam">#B26A00</color>
+    <color name="notification_action_delete">#C62828</color>
 </resources>

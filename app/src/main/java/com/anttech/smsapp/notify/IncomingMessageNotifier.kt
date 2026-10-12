@@ -8,8 +8,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import androidx.annotation.ColorRes
+import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
 import androidx.core.app.RemoteInput
+import androidx.core.content.ContextCompat
 import com.anttech.smsapp.EXTRA_CONVERSATION_ID
 import com.anttech.smsapp.MainActivity
 import com.anttech.smsapp.R
@@ -99,6 +105,11 @@ class IncomingMessageNotifier(context: Context) {
 
         val builder = NotificationCompat.Builder(appContext, NotificationChannels.INCOMING_MESSAGES)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
+            // Accent colour: the platform tints the notification's app name and
+            // small icon from it. The action labels carry their own colour (see
+            // colouredLabel), because the accent is a single colour for the whole
+            // notification and could not tell the options apart.
+            .setColor(ContextCompat.getColor(appContext, R.color.notification_accent))
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
@@ -113,13 +124,40 @@ class IncomingMessageNotifier(context: Context) {
             builder.addAction(replyAction(address, conversation, messageId))
         }
         if (actionPreferences.isEnabled(ACTION_MARK_READ)) {
-            builder.addAction(action(ACTION_MARK_READ, R.drawable.ic_action_mark_read, R.string.notification_action_read, conversation, messageId))
+            builder.addAction(
+                action(
+                    ACTION_MARK_READ,
+                    R.drawable.ic_action_mark_read,
+                    R.string.notification_action_read,
+                    R.color.notification_action_read,
+                    conversation,
+                    messageId,
+                ),
+            )
         }
         if (actionPreferences.isEnabled(ACTION_MARK_SPAM)) {
-            builder.addAction(action(ACTION_MARK_SPAM, R.drawable.ic_action_spam, R.string.notification_action_spam, conversation, messageId))
+            builder.addAction(
+                action(
+                    ACTION_MARK_SPAM,
+                    R.drawable.ic_action_spam,
+                    R.string.notification_action_spam,
+                    R.color.notification_action_spam,
+                    conversation,
+                    messageId,
+                ),
+            )
         }
         if (actionPreferences.isEnabled(ACTION_DELETE)) {
-            builder.addAction(action(ACTION_DELETE, R.drawable.ic_action_delete, R.string.notification_action_delete, conversation, messageId))
+            builder.addAction(
+                action(
+                    ACTION_DELETE,
+                    R.drawable.ic_action_delete,
+                    R.string.notification_action_delete,
+                    R.color.notification_action_delete,
+                    conversation,
+                    messageId,
+                ),
+            )
         }
 
         val notification = builder.build()
@@ -139,7 +177,7 @@ class IncomingMessageNotifier(context: Context) {
     private fun replyAction(address: String, conversationId: Long, messageId: Long): NotificationCompat.Action =
         NotificationCompat.Action.Builder(
             R.drawable.ic_action_reply,
-            appContext.getString(R.string.notification_action_reply),
+            colouredLabel(R.string.notification_action_reply, R.color.notification_action_reply),
             PendingIntent.getBroadcast(
                 appContext,
                 actionRequestCode(ACTION_REPLY, conversationId),
@@ -175,11 +213,12 @@ class IncomingMessageNotifier(context: Context) {
         action: String,
         icon: Int,
         label: Int,
+        labelColor: Int,
         conversationId: Long,
         messageId: Long,
     ): NotificationCompat.Action = NotificationCompat.Action.Builder(
         icon,
-        appContext.getString(label),
+        colouredLabel(label, labelColor),
         PendingIntent.getBroadcast(
             appContext,
             actionRequestCode(action, conversationId),
@@ -187,6 +226,25 @@ class IncomingMessageNotifier(context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         ),
     ).build()
+
+    /**
+     * An action label in its own colour.
+     *
+     * A spanned title is the only supported way to colour a single action: the
+     * notification accent ([NotificationCompat.Builder.setColor]) is one colour
+     * for the whole notification, so it cannot set the options apart. The
+     * platform templates may re-luminance a spanned title to keep it legible, so
+     * these hues are a starting point rather than a guaranteed rendering.
+     */
+    private fun colouredLabel(@StringRes label: Int, @ColorRes color: Int): CharSequence =
+        SpannableString(appContext.getString(label)).apply {
+            setSpan(
+                ForegroundColorSpan(ContextCompat.getColor(appContext, color)),
+                0,
+                length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
 
     private fun actionRequestCode(action: String, conversationId: Long): Int {
         val slot = when (action) {

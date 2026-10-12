@@ -5,7 +5,11 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import androidx.core.content.ContextCompat
 import androidx.test.core.app.ApplicationProvider
+import com.anttech.smsapp.R
 import com.anttech.smsapp.sms.receive.InboundMessage
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -74,6 +78,30 @@ class IncomingMessageNotifierTest {
             listOf("Reply", "Read", "Spam", "Delete"),
             actions().map { it.title.toString() },
         )
+    }
+
+    /**
+     * Each option draws in its own colour rather than the notification's single
+     * accent, so the label has to carry a [ForegroundColorSpan] for its action.
+     */
+    @Test
+    fun `each action label carries its own colour`() {
+        IncomingMessageNotifier(context).notify(message, messageId = 7L, conversationId = 3L)
+
+        val expected = listOf(
+            R.color.notification_action_reply,
+            R.color.notification_action_read,
+            R.color.notification_action_spam,
+            R.color.notification_action_delete,
+        )
+        actions().forEachIndexed { index, action ->
+            val title = action.title as Spanned
+            val span = title.getSpans(0, title.length, ForegroundColorSpan::class.java).single()
+            assertEquals(
+                ContextCompat.getColor(context, expected[index]),
+                span.foregroundColor,
+            )
+        }
     }
 
     @Test
