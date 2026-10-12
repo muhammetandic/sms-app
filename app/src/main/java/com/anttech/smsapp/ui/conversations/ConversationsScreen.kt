@@ -57,7 +57,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
 import com.anttech.smsapp.ui.components.ConfirmDeleteConversations
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
+import com.anttech.smsapp.ui.theme.DraftsFolderColor
 import com.anttech.smsapp.ui.theme.OnAvatarColor
+import com.anttech.smsapp.ui.theme.SpamFolderColor
 import com.anttech.smsapp.ui.theme.avatarColorFor
 
 @Composable
@@ -220,12 +222,14 @@ fun ConversationsScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_spam),
                                 contentDescription = stringResource(R.string.spam_open),
+                                tint = SpamFolderColor,
                             )
                         }
                         IconButton(onClick = onOpenDrafts) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_unread),
                                 contentDescription = stringResource(R.string.drafts_open),
+                                tint = DraftsFolderColor,
                             )
                         }
                         IconButton(onClick = onOpenSettings) {
