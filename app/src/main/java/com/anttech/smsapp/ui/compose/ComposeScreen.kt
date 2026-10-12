@@ -52,6 +52,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
@@ -215,7 +216,10 @@ fun ComposeScreen(
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true,
                 enabled = !state.isSending,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Done,
+                ),
                 keyboardActions = KeyboardActions(
                     onDone = {
                         onCommitRecipient()
