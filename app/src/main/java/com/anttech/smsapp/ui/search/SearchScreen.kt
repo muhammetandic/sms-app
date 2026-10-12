@@ -155,7 +155,7 @@ private fun SearchRow(result: SearchResult, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Avatar(title = result.title)
+            Avatar(title = result.title, colorKey = result.address)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = result.title,

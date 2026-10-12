@@ -57,6 +57,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
 import com.anttech.smsapp.ui.components.ConfirmDeleteConversations
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
+import com.anttech.smsapp.ui.theme.OnAvatarColor
+import com.anttech.smsapp.ui.theme.avatarColorFor
 
 @Composable
 fun ConversationsRoute(
@@ -389,7 +391,7 @@ internal fun ConversationItem(
                     )
                 }
             } else {
-                Avatar(title = row.title)
+                Avatar(title = row.title, colorKey = row.address)
             }
 
             Row(
@@ -476,13 +478,13 @@ internal fun ConversationItem(
 /**
  * Leading circle carrying the sender's first character.
  *
- * Tonal rather than a flat primary, so it reads as a label rather than a button,
- * and it takes the surface variant colour so it stays legible in both schemes.
- * Hidden from the accessibility tree because the row label already names the
- * sender, and this would repeat it.
+ * The fill is picked per sender from [AvatarColors], keyed on the stored address
+ * so a row keeps its colour once a contact name resolves. Hidden from the
+ * accessibility tree because the row label already names the sender, and this
+ * would repeat it.
  */
 @Composable
-internal fun Avatar(title: String, size: Dp = 40.dp) {
+internal fun Avatar(title: String, colorKey: String = title, size: Dp = 40.dp) {
     Box(
         modifier = Modifier
             .size(size)
@@ -492,12 +494,12 @@ internal fun Avatar(title: String, size: Dp = 40.dp) {
         Surface(
             modifier = Modifier.matchParentSize(),
             shape = CircleShape,
-            color = MaterialTheme.colorScheme.secondaryContainer,
+            color = avatarColorFor(colorKey),
         ) {}
         Text(
             text = title.firstOrNull()?.uppercase() ?: "?",
             style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            color = OnAvatarColor,
         )
     }
 }
