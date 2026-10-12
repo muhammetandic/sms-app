@@ -243,16 +243,23 @@ fun ThreadScreen(
                     }
                 },
                 actions = {
-                    // One bell-off glyph covers both directions; the label says
-                    // what a tap will do (Mute when live, Unmute when silenced),
-                    // so the state is always discoverable.
-                    val muteLabel = stringResource(
-                        if (state.isMuted) R.string.thread_unmute else R.string.thread_mute,
-                    )
+                    // The glyph reflects the current state (bell = alerts on,
+                    // struck-through bell = silenced) while the label names the
+                    // action a tap performs, so the toggle reads correctly
+                    // before and after it is pressed.
+                    val muted = state.isMuted
                     IconButton(onClick = onToggleMuted) {
                         Icon(
-                            painter = painterResource(R.drawable.ic_action_mute),
-                            contentDescription = muteLabel,
+                            painter = painterResource(
+                                if (muted) {
+                                    R.drawable.ic_action_mute
+                                } else {
+                                    R.drawable.ic_action_notifications
+                                },
+                            ),
+                            contentDescription = stringResource(
+                                if (muted) R.string.thread_unmute else R.string.thread_mute,
+                            ),
                         )
                     }
                 },
