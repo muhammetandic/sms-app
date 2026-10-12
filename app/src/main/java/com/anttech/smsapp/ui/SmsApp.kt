@@ -331,8 +331,10 @@ private fun SmsNavHost(
                 val number = queryContactPhoneNumber(context.contentResolver, uri)
                     ?: return@rememberLauncherForActivityResult
                 // The picker only hands back the number; look the name up so the
-                // field shows the contact rather than the raw digits.
+                // field shows the contact rather than the raw digits. Anything
+                // already typed is committed first so it is not dropped.
                 navigationScope.launch {
+                    viewModel.commitRecipientInput()
                     viewModel.addRecipient(number, contactNames.displayName(number))
                 }
             }

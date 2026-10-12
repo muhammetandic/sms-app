@@ -1,8 +1,11 @@
 package com.anttech.smsapp.ui.compose
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,18 +13,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -33,17 +42,16 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
@@ -92,7 +100,9 @@ fun ComposeRoute(
         snackbarHostState = snackbarHostState,
         isSmsRoleHeld = isSmsRoleHeld,
         onBack = onBack,
-        onRecipientChanged = viewModel::onRecipientChanged,
+        onRecipientInputChanged = viewModel::onRecipientInputChanged,
+        onCommitRecipient = viewModel::commitRecipientInput,
+        onRemoveRecipient = viewModel::removeRecipient,
         onDraftChanged = viewModel::onDraftChanged,
         onSend = viewModel::onSend,
         onRequestSmsRole = onRequestSmsRole,
@@ -100,20 +110,23 @@ fun ComposeRoute(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ComposeScreen(
     state: ComposeUiState,
     snackbarHostState: SnackbarHostState,
     isSmsRoleHeld: Boolean,
     onBack: () -> Unit,
-    onRecipientChanged: (String) -> Unit,
+    onRecipientInputChanged: (String) -> Unit,
+    onCommitRecipient: () -> Unit,
+    onRemoveRecipient: (String) -> Unit,
     onDraftChanged: (String) -> Unit,
     onSend: () -> Unit,
     onRequestSmsRole: () -> Unit,
     onPickContact: () -> Unit,
 ) {
     val backLabel = stringResource(R.string.thread_back)
+    val focusManager = LocalFocusManager.current
 
     Scaffold(
         topBar = {
@@ -149,16 +162,44 @@ fun ComposeScreen(
             }
 
             val recipientLabel = stringResource(R.string.compose_recipient_label)
-            // Recipients are stored as addresses because that is what gets sent,
-            // but a recipient resolved to a contact is shown by name instead. The
-            // raw addresses come back the instant the field is focused, so the
-            // name is never something the user has to type over to edit.
-            var recipientEditing by remember { mutableStateOf(false) }
-            val displayRecipient =
-                if (recipientEditing) null else namedRecipients(state.recipient, state.recipientNames)
+            val removeRecipientLabel = stringResource(R.string.compose_remove_recipient)
+            // A recipient resolved to a contact is drawn as a chip carrying the
+            // name; the address stays in the state and is what gets sent. The
+            // chip's only action is its remove button.
+            val recipients = recipientAddresses(state.recipient)
+            if (recipients.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    for (address in recipients) {
+                        InputChip(
+                            selected = false,
+                            onClick = {},
+                            enabled = !state.isSending,
+                            label = { Text(state.recipientNames[address] ?: address) },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = removeRecipientLabel,
+                                    modifier = Modifier
+                                        .size(InputChipDefaults.IconSize)
+                                        .clickable(enabled = !state.isSending) {
+                                            onRemoveRecipient(address)
+                                        },
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            // The "To" field only ever holds the address being typed; committed
+            // recipients have moved into chips above it.
             OutlinedTextField(
-                value = displayRecipient ?: state.recipient,
-                onValueChange = onRecipientChanged,
+                value = state.recipientInput,
+                onValueChange = onRecipientInputChanged,
                 label = { Text(stringResource(R.string.compose_recipient_hint)) },
                 trailingIcon = {
                     IconButton(
@@ -174,9 +215,15 @@ fun ComposeScreen(
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true,
                 enabled = !state.isSending,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        onCommitRecipient()
+                        focusManager.clearFocus()
+                    },
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onFocusChanged { recipientEditing = it.isFocused }
                     .testTag(ComposeTestTags.RECIPIENT_FIELD)
                     .semantics { contentDescription = recipientLabel },
             )
@@ -247,17 +294,4 @@ private fun composeErrorText(error: ComposeError): String = when (error) {
                 SendValidator.MAX_BODY_LENGTH,
             )
     }
-}
-
-/**
- * Renders the whole recipient line using contact names, or null when any address
- * on it has no known name — in which case the caller shows the raw addresses so
- * a partially resolved line is never mislabelled. Split, trim, and lookup match
- * the way [ComposeViewModel.addRecipient] stores addresses.
- */
-internal fun namedRecipients(recipient: String, names: Map<String, String>): String? {
-    val parts = recipient.split(',').map(String::trim).filter(String::isNotEmpty)
-    if (parts.isEmpty()) return null
-    val resolved = parts.map { address -> names[address] ?: return null }
-    return resolved.joinToString(", ")
 }

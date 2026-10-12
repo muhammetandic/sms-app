@@ -13,11 +13,19 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 data class ComposeUiState(
+    /**
+     * The recipients the message will go to, as comma-separated addresses. This
+     * is the source of truth for sending; the screen draws each one as a chip.
+     */
     val recipient: String = "",
     /**
-     * Contact names for addresses already on the recipient line, keyed by the
-     * trimmed address. The address is still what gets sent; this only lets the
-     * field show a name in its place.
+     * The address being typed in the "To" field and not yet committed to a chip.
+     * Kept apart from [recipient] so a half-typed number is never sent as-is.
+     */
+    val recipientInput: String = "",
+    /**
+     * Contact names for addresses in [recipient], keyed by the trimmed address.
+     * The address is still what gets sent; this only lets a chip show a name.
      */
     val recipientNames: Map<String, String> = emptyMap(),
     val draft: String = "",
@@ -66,23 +74,39 @@ class ComposeViewModel(
         if (autoSend && isSmsRoleHeld()) onSend()
     }
 
-    fun onRecipientChanged(value: String) = mutableState.update {
-        it.copy(recipient = value, error = null)
+    fun onRecipientInputChanged(value: String) {
+        // A separator is how the "To" field ends one recipient and starts the
+        // next, so commit on it rather than keeping the comma in a chip.
+        if (value.lastOrNull() == ',' || value.lastOrNull() == ';') {
+            mutableState.update { it.copy(recipientInput = value, error = null) }
+            commitRecipientInput()
+        } else {
+            mutableState.update { it.copy(recipientInput = value, error = null) }
+        }
+    }
+
+    /**
+     * Moves whatever is in the "To" field into the recipient list. A pasted run
+     * like "111, 222" becomes two recipients rather than one bogus address.
+     */
+    fun commitRecipientInput() {
+        val pending = mutableState.value.recipientInput
+        for (part in pending.split(',', ';').map(String::trim).filter(String::isNotEmpty)) {
+            addRecipient(part)
+        }
+        if (pending.isNotEmpty()) mutableState.update { it.copy(recipientInput = "") }
     }
 
     /**
      * Adds a picked contact without replacing recipients already selected. A
-     * known [name] is remembered against the address so the field can show the
+     * known [name] is remembered against the address so the chip can show the
      * contact rather than the raw number.
      */
     fun addRecipient(address: String, name: String? = null) {
         val trimmed = address.trim()
         if (trimmed.isEmpty()) return
         mutableState.update {
-            val existing = it.recipient
-                .split(',')
-                .map(String::trim)
-                .filter(String::isNotEmpty)
+            val existing = recipientAddresses(it.recipient)
             val names = if (name != null) it.recipientNames + (trimmed to name) else it.recipientNames
             if (existing.any { current -> current.equals(trimmed, ignoreCase = true) }) {
                 it.copy(recipientNames = names)
@@ -96,7 +120,19 @@ class ComposeViewModel(
         }
     }
 
-    /** Remembers the contact name behind [address] so the field can display it. */
+    /** Drops [address] from the recipient list, and its name with it. */
+    fun removeRecipient(address: String) = mutableState.update {
+        val trimmed = address.trim()
+        it.copy(
+            recipient = recipientAddresses(it.recipient)
+                .filterNot { current -> current.equals(trimmed, ignoreCase = true) }
+                .joinToString(", "),
+            recipientNames = it.recipientNames - trimmed,
+            error = null,
+        )
+    }
+
+    /** Remembers the contact name behind [address] so its chip can display it. */
     fun registerRecipientName(address: String, name: String) = mutableState.update {
         it.copy(recipientNames = it.recipientNames + (address.trim() to name))
     }
@@ -106,9 +142,13 @@ class ComposeViewModel(
     }
 
     fun onSend() {
-        val state = mutableState.value
-        if (state.isSending) return
+        if (mutableState.value.isSending) return
 
+        // The message must go to whatever is in the "To" field too, even if the
+        // user hit Send without turning it into a chip first.
+        commitRecipientInput()
+
+        val state = mutableState.value
         val recipient = state.recipient.trim()
         val body = state.draft.trim()
 
@@ -163,3 +203,11 @@ class ComposeViewModel(
         }
     }
 }
+
+/**
+ * Splits the stored comma-separated recipient string into the individual
+ * addresses a chip is drawn for. Blank entries are dropped so a trailing comma
+ * or a stray space never becomes an empty chip.
+ */
+internal fun recipientAddresses(recipient: String): List<String> =
+    recipient.split(',').map(String::trim).filter(String::isNotEmpty)

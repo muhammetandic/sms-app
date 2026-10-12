@@ -79,26 +79,74 @@ class ComposeViewModelTest {
     }
 
     @Test
-    fun `named recipients render every address as a name`() {
-        val names = mapOf("+15551234567" to "John Doe", "+905530676691" to "Ayşe Yılmaz")
+    fun `removing a recipient drops the address and its name`() = runTest(mainDispatcherRule.testDispatcher) {
+        val model = viewModel(recipient = "+15551234567")
+        model.addRecipient("+905530676691", "Ayşe Yılmaz")
+
+        model.removeRecipient("+15551234567")
+
+        val state = model.uiState.value
+        assertEquals("+905530676691", state.recipient)
+        assertEquals(mapOf("+905530676691" to "Ayşe Yılmaz"), state.recipientNames)
+    }
+
+    @Test
+    fun `committing the typed field turns it into a recipient`() = runTest(mainDispatcherRule.testDispatcher) {
+        val model = viewModel(recipient = "")
+
+        model.onRecipientInputChanged("+905530676691")
+        model.commitRecipientInput()
+
+        assertEquals("+905530676691", model.uiState.value.recipient)
+        assertEquals("", model.uiState.value.recipientInput)
+    }
+
+    @Test
+    fun `a pasted run of separators becomes separate recipients`() = runTest(mainDispatcherRule.testDispatcher) {
+        val model = viewModel(recipient = "")
+
+        model.onRecipientInputChanged("+15551234567, +905530676691;+15559876543")
+        model.commitRecipientInput()
 
         assertEquals(
-            "John Doe, Ayşe Yılmaz",
-            namedRecipients("+15551234567, +905530676691", names),
+            "+15551234567, +905530676691, +15559876543",
+            model.uiState.value.recipient,
         )
+        assertEquals("", model.uiState.value.recipientInput)
     }
 
     @Test
-    fun `named recipients step aside when an address has no name`() {
-        val names = mapOf("+15551234567" to "John Doe")
+    fun `typing a separator commits what came before it`() = runTest(mainDispatcherRule.testDispatcher) {
+        val model = viewModel(recipient = "")
 
-        assertNull(namedRecipients("+15551234567, +19998887777", names))
+        model.onRecipientInputChanged("+15551234567,")
+
+        assertEquals("+15551234567", model.uiState.value.recipient)
+        assertEquals("", model.uiState.value.recipientInput)
     }
 
     @Test
-    fun `named recipients are null for an empty line`() {
-        assertNull(namedRecipients("", mapOf("+15551234567" to "John Doe")))
-        assertNull(namedRecipients("  ", emptyMap()))
+    fun `sending commits the typed field first`() = runTest(mainDispatcherRule.testDispatcher) {
+        val sentTo = mutableListOf<String>()
+        val model = viewModel(recipient = "", draft = "hello", send = { to, _ ->
+            sentTo += to
+            SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
+        })
+
+        model.onRecipientInputChanged("+15551234567")
+        model.onSend()
+
+        model.uiState.first { it.isFinished }
+        assertEquals(listOf("+15551234567"), sentTo)
+    }
+
+    @Test
+    fun `recipient addresses drop blank entries`() {
+        assertEquals(
+            listOf("+15551234567", "+905530676691"),
+            recipientAddresses("+15551234567,  , +905530676691, "),
+        )
+        assertEquals(emptyList<String>(), recipientAddresses("   "))
     }
 
     @Test
@@ -110,7 +158,7 @@ class ComposeViewModelTest {
             model.uiState.first { it.error != null }.error,
         )
 
-        model.onRecipientChanged("+15551234567")
+        model.onRecipientInputChanged("+15551234567")
 
         assertNull(model.uiState.first { it.error == null }.error)
     }

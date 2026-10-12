@@ -59,6 +59,7 @@
     <string name="compose_recipient_label">Recipient phone number</string>
     <string name="compose_recipient_hint">To</string>
     <string name="compose_pick_contact">Choose contact</string>
+    <string name="compose_remove_recipient">Remove recipient</string>
     <string name="compose_send">Send</string>
     <string name="compose_error_no_recipient">No recipient</string>
     <string name="compose_error_bad_recipient">Recipient cannot be parsed as a phone number</string>

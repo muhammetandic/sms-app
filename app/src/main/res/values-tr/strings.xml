@@ -56,6 +56,7 @@
     <string name="compose_recipient_label">Alıcının telefon numarası</string>
     <string name="compose_recipient_hint">Kime</string>
     <string name="compose_pick_contact">Kişi seç</string>
+    <string name="compose_remove_recipient">Alıcıyı kaldır</string>
     <string name="compose_send">Gönder</string>
     <string name="compose_error_no_recipient">Alıcı yok</string>
     <string name="compose_error_bad_recipient">Alıcı telefon numarası olarak çözümlenemiyor</string>
