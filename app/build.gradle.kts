@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.oaktech.smsapp"
+    namespace = "com.anttech.smsapp"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.oaktech.smsapp"
+        applicationId = "com.anttech.smsapp"
         minSdk = 30
         targetSdk = 37
         versionCode = 1

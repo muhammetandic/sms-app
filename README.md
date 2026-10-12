@@ -12,7 +12,7 @@ Sideloaded, not distributed through Play. SMS with dual-SIM send choice, a block
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Debug builds install as `com.oaktech.smsapp.debug` so they can sit alongside a release build.
+Debug builds install as `com.anttech.smsapp.debug` so they can sit alongside a release build.
 
 ## Toolchain
 
@@ -47,7 +47,7 @@ Without those properties the release variant builds unsigned. Keep one keystore 
 ## Layout
 
 ```
-app/src/main/java/com/oaktech/smsapp/
+app/src/main/java/com/anttech/smsapp/
   MainActivity.kt          Compose entry point, role request flow
   SmsApp.kt                Application class
   data/
