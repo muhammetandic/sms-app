@@ -1,13 +1,14 @@
 package com.oaktech.smsapp.permission
 
 import android.Manifest
+import android.app.Application
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.shadows.ShadowApplication
+import org.robolectric.Shadows.shadowOf
 
 /**
  * The permission set is load-bearing for the receive path: a permission that is
@@ -43,7 +44,7 @@ class SmsPermissionsTest {
 
     @Test
     fun `one denied essential permission is enough to be not all granted`() {
-        val shadow = ShadowApplication.getInstance()
+        val shadow = shadowOf(ApplicationProvider.getApplicationContext<Application>())
         shadow.grantPermissions(*SmsPermissions.essential.toTypedArray())
         shadow.denyPermissions(Manifest.permission.RECEIVE_SMS)
         assertFalse(SmsPermissions.allGranted(context))
