@@ -37,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -247,6 +248,10 @@ private fun composeErrorText(error: ComposeError): String = when (error) {
             stringResource(R.string.compose_error_bad_recipient)
         SendValidator.Reason.EMPTY_BODY -> stringResource(R.string.compose_error_empty_body)
         SendValidator.Reason.BODY_TOO_LONG ->
-            stringResource(R.string.compose_error_body_too_long, SendValidator.MAX_BODY_LENGTH)
+            pluralStringResource(
+                R.plurals.compose_error_body_too_long,
+                SendValidator.MAX_BODY_LENGTH,
+                SendValidator.MAX_BODY_LENGTH,
+            )
     }
 }

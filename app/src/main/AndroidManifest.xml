@@ -22,13 +22,18 @@
     -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Telephony is needed to send and receive, but the app degrades to
+         read-only local history without it, so the feature is advertised
+         rather than required. -->
     <uses-feature
         android:name="android.hardware.telephony"
-        android:required="true" />
+        android:required="false" />
 
     <application
         android:name=".SmsApp"
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:supportsRtl="true"

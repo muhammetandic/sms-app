@@ -5,6 +5,7 @@ import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.oaktech.smsapp.testing.MainDispatcherRule
 import java.time.Duration
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -16,6 +17,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class ProviderChangeObserverTest {
 
     @get:Rule

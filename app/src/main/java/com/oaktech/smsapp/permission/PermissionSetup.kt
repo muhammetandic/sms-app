@@ -1,6 +1,7 @@
 package com.oaktech.smsapp.permission
 
 import android.content.Context
+import androidx.core.content.edit
 
 /**
  * Records that the essential SMS permissions have been granted at least once.
@@ -20,7 +21,7 @@ object PermissionSetup {
         preferences(context).getBoolean(KEY_GRANTED, false)
 
     fun markGranted(context: Context) {
-        preferences(context).edit().putBoolean(KEY_GRANTED, true).apply()
+        preferences(context).edit { putBoolean(KEY_GRANTED, true) }
     }
 
     private fun preferences(context: Context) =

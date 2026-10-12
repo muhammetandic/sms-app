@@ -3,6 +3,7 @@ package com.oaktech.smsapp.sms.receive
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.provider.Telephony
 import android.util.Log
 
 /**
@@ -16,6 +17,10 @@ import android.util.Log
  */
 class WapPushDeliverReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // The filter matches WAP_PUSH_DELIVER, but a broadcast intent can carry
+        // any action. Confirm it before treating the intent as ours; without the
+        // check a spoofed intent with no action would still reach this method.
+        if (intent.action != Telephony.Sms.Intents.WAP_PUSH_DELIVER_ACTION) return
         Log.i(LogTags.RECEIVE, "Ignoring WAP push: MMS is not supported")
     }
 }

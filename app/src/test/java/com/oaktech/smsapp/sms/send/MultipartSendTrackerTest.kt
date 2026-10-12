@@ -82,8 +82,8 @@ class MultipartSendTrackerTest {
 
         val outcome = tracker.onFatalFailure(ResultCode.NO_SERVICE.platformCode)
 
-        assertEquals(SendState.FAILED, outcome?.state)
-        assertEquals(4, outcome?.totalParts)
+        assertEquals(SendState.FAILED, outcome.state)
+        assertEquals(4, outcome.totalParts)
         assertTrue(tracker.isResolved)
     }
 
@@ -104,8 +104,8 @@ class MultipartSendTrackerTest {
 
         val outcome = tracker.markDelivered()
 
-        assertEquals(SendState.SENT, outcome?.state)
-        assertTrue(outcome?.isSuccess == true)
+        assertEquals(SendState.SENT, outcome.state)
+        assertTrue(outcome.isSuccess)
     }
 
     @Test
@@ -115,7 +115,7 @@ class MultipartSendTrackerTest {
 
         val outcome = tracker.markDelivered()
 
-        assertEquals(SendState.FAILED, outcome?.state)
+        assertEquals(SendState.FAILED, outcome.state)
     }
 
     @Test(expected = IllegalArgumentException::class)

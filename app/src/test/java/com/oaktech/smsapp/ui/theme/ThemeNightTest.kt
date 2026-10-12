@@ -266,7 +266,7 @@ class ThemeNightTest {
     /** Unused, but keeps the locale-dependent resource path honest on import. */
     @Test
     fun `locale does not change the window background`() {
-        Locale.setDefault(Locale("tr", "TR"))
+        Locale.setDefault(Locale.forLanguageTag("tr-TR"))
         try {
             val background = configured(Configuration.UI_MODE_NIGHT_YES)
                 .getColor(R.color.window_background)

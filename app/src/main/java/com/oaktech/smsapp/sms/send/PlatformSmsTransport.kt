@@ -66,6 +66,10 @@ class PlatformSmsTransport(
     @SuppressLint("MissingPermission")
     override fun subscriptionId(): Int = effectiveSubscriptionId()
 
+    // The async getSmsManagerForSubscriptionId(Int, Executor, Consumer) that
+    // supersedes this lookup is API 36+, above the app's API 30 floor, and the
+    // send path here is synchronous, so the deprecated form is the right one.
+    @Suppress("DEPRECATION")
     @SuppressLint("MissingPermission")
     private fun smsManager(): SmsManager =
         SmsManager.getSmsManagerForSubscriptionId(effectiveSubscriptionId())

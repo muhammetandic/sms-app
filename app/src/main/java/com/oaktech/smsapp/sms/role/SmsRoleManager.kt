@@ -3,7 +3,6 @@ package com.oaktech.smsapp.sms.role
 import android.app.role.RoleManager
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 
 /**
  * Wraps the SMS role so callers do not deal with API levels or intent building.
@@ -16,18 +15,17 @@ class SmsRoleManager(context: Context) {
 
     private val appContext = context.applicationContext
 
-    val isAvailable: Boolean
-        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
-
     fun isHeld(): Boolean =
-        isAvailable && roleManager()?.isRoleHeld(RoleManager.ROLE_SMS) == true
+        roleManager()?.isRoleHeld(RoleManager.ROLE_SMS) == true
 
     fun isQualified(): Boolean =
-        isAvailable && roleManager()?.isRoleAvailable(RoleManager.ROLE_SMS) == true
+        roleManager()?.isRoleAvailable(RoleManager.ROLE_SMS) == true
 
     fun createRequestIntent(): Intent? =
         roleManager()?.createRequestRoleIntent(RoleManager.ROLE_SMS)
 
+    // RoleManager landed in API 29, below the minSdk 30 floor, so the old
+    // version gate is gone; the service can still resolve to null.
     private fun roleManager(): RoleManager? =
-        if (isAvailable) appContext.getSystemService(RoleManager::class.java) else null
+        appContext.getSystemService(RoleManager::class.java)
 }

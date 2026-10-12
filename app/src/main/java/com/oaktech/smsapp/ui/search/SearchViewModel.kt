@@ -8,6 +8,7 @@ import com.oaktech.smsapp.data.local.MessageSearchHit
 import com.oaktech.smsapp.ui.TimeFormat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -44,7 +45,7 @@ data class SearchResult(
  * are found by resolving each conversation's address against the contacts
  * provider and, like the conversation list, falling back to the raw number.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class SearchViewModel(
     private val repository: MessageRepository,
     private val resolveName: suspend (String) -> String?,

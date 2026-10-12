@@ -1,6 +1,7 @@
 package com.oaktech.smsapp.sms.send
 
 import android.content.Context
+import androidx.core.content.edit
 
 /**
  * The persisted choice of which SIM new SMS messages are sent on.
@@ -22,13 +23,13 @@ class SmsSubscriptionSettings(context: Context) {
 
     /** Pins sending to [subscriptionId], or null to follow the system default. */
     fun setPreferredSubscriptionId(subscriptionId: Int?) {
-        preferences.edit().apply {
+        preferences.edit {
             if (subscriptionId != null && SmsSubscriptionSelector.isValidSubscriptionId(subscriptionId)) {
                 putInt(KEY_PREFERRED_SUB_ID, subscriptionId)
             } else {
                 remove(KEY_PREFERRED_SUB_ID)
             }
-        }.apply()
+        }
     }
 
     private companion object {

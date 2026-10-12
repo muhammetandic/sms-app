@@ -31,7 +31,7 @@ class TurkishTranslationTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
     private fun inTurkish(): Context {
-        val locale = Locale("tr", "TR")
+        val locale = Locale.forLanguageTag("tr-TR")
         Locale.setDefault(locale)
         val configuration = android.content.res.Configuration(context.resources.configuration)
         configuration.setLocale(locale)
@@ -237,7 +237,7 @@ class TurkishTranslationTest {
         assertEquals("Mesaj metni boş", tr.getString(R.string.compose_error_empty_body))
         assertEquals(
             "Mesaj metni 10000 karakteri aşıyor",
-            tr.getString(R.string.compose_error_body_too_long, 10000),
+            tr.resources.getQuantityString(R.plurals.compose_error_body_too_long, 10000, 10000),
         )
     }
 

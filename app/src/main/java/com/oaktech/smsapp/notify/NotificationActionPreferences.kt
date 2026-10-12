@@ -1,6 +1,7 @@
 package com.oaktech.smsapp.notify
 
 import android.content.Context
+import androidx.core.content.edit
 
 /** Stores which quick actions should be shown on incoming-message notifications. */
 class NotificationActionPreferences(context: Context) {
@@ -14,7 +15,7 @@ class NotificationActionPreferences(context: Context) {
         preferences.getBoolean(keyFor(action), true)
 
     fun setEnabled(action: String, enabled: Boolean) {
-        preferences.edit().putBoolean(keyFor(action), enabled).apply()
+        preferences.edit { putBoolean(keyFor(action), enabled) }
     }
 
     private fun keyFor(action: String): String = "$KEY_PREFIX$action"

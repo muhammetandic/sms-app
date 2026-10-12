@@ -1,6 +1,7 @@
 package com.oaktech.smsapp.sms.block
 
 import android.content.Context
+import androidx.core.content.edit
 import com.oaktech.smsapp.data.local.AddressNormalizer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,7 +44,7 @@ class BlockedSenders(context: Context) {
 
     @Synchronized
     private fun persist() {
-        preferences.edit().putStringSet(KEY_BLOCKED, _blocks.value).apply()
+        preferences.edit { putStringSet(KEY_BLOCKED, _blocks.value) }
     }
 
     private fun load(): Set<String> =

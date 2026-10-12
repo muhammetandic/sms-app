@@ -79,8 +79,8 @@ class SmsTransportContractTest {
 
         val outcome = tracker.markDelivered()
 
-        assertEquals(ResultCode.DELIVERED, outcome?.code)
-        assertEquals(SendState.SENT, outcome?.state)
+        assertEquals(ResultCode.DELIVERED, outcome.code)
+        assertEquals(SendState.SENT, outcome.state)
     }
 
     @Test

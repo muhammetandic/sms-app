@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  `allowBackup` is false, so nothing should ever leave the device. On Android 12+
+  that attribute only governs cloud backups and `dataExtractionRules` is the one
+  that also covers device-to-device transfer, so both sections exclude every
+  storage domain rather than relying on the deprecated attribute alone. SMS is
+  private; a transferred copy would outlive the role the user granted.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>

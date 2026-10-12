@@ -1,5 +1,6 @@
 package com.oaktech.smsapp.ui.thread
 
+import android.content.ClipData
 import android.content.Intent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -51,11 +52,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -63,7 +66,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -78,6 +80,7 @@ import com.oaktech.smsapp.sms.send.SmsSegments
 import com.oaktech.smsapp.ui.TimeFormat
 import com.oaktech.smsapp.ui.components.LinkifiedText
 import com.oaktech.smsapp.ui.components.ReadOnlyBanner
+import kotlinx.coroutines.launch
 
 class ThreadTestTags {
     companion object {
@@ -203,7 +206,8 @@ fun ThreadScreen(
     // answered. Deleting a message is permanent, so it is never implicit.
     var pendingDelete by remember { mutableStateOf<MessageBubble?>(null) }
 
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     val context = LocalContext.current
     val copiedLabel = stringResource(R.string.message_copied)
     // Each copy is a new trigger; a state change re-runs the one-shot snackbar,
@@ -306,7 +310,11 @@ fun ThreadScreen(
             onDismiss = { selectedBubble = null },
             onCopy = {
                 selectedBubble = null
-                clipboard.setText(AnnotatedString(bubble.body))
+                // Clipboard writes are suspend now; the sheet dismisses at once
+                // and the copy lands on the composition's scope.
+                clipboardScope.launch {
+                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, bubble.body)))
+                }
                 copiedNotice += 1
             },
             onShare = {

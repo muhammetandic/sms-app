@@ -16,7 +16,6 @@
         <item quantity="other">%1$d okunmamış</item>
     </plurals>
     <string name="conversation_row_description">%1$s ile sohbet. %2$s. %3$s. %4$s</string>
-    <string name="conversation_row_description_no_snippet">Mesaj yok</string>
 
     <string name="thread_empty">Bu sohbette mesaj yok</string>
     <string name="thread_back">Geri</string>
@@ -37,7 +36,6 @@
         <item quantity="one">%1$d/%2$d · %3$d parça</item>
         <item quantity="other">%1$d/%2$d · %3$d parça</item>
     </plurals>
-    <string name="thread_send_failed_dismiss">Kapat</string>
     <string name="thread_mute">Sohbeti sessize al</string>
     <string name="thread_unmute">Sohbetin sesini aç</string>
 
@@ -52,7 +50,6 @@
     <string name="permission_revoked_title">Mesaj erişimi kapatıldı</string>
     <string name="permission_revoked_body">Sistem ayarlarında bazı izinler kapatıldı, bu nedenle yeni mesajlar buraya artık ulaşmıyor. Devam etmek için yeniden açın.</string>
 
-    <string name="send_sms_test">Test SMS gönder</string>
     <!-- test_recipient is a literal dial string and is marked translatable="false". -->
 
     <string name="compose_title">Yeni mesaj</string>
@@ -64,7 +61,10 @@
     <string name="compose_error_bad_recipient">Alıcı telefon numarası olarak çözümlenemiyor</string>
     <string name="compose_error_empty_body">Mesaj metni boş</string>
     <!-- %1$d is the character limit from SendValidator.MAX_BODY_LENGTH. -->
-    <string name="compose_error_body_too_long">Mesaj metni %1$d karakteri aşıyor</string>
+    <plurals name="compose_error_body_too_long">
+        <item quantity="one">Mesaj metni %1$d karakteri aşıyor</item>
+        <item quantity="other">Mesaj metni %1$d karakteri aşıyor</item>
+    </plurals>
 
     <string name="notification_channel_name">Gelen mesajlar</string>
     <string name="notification_channel_description">Yeni bir metin mesajı geldiğinde uyarır</string>

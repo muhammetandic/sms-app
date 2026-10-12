@@ -18,7 +18,6 @@
         <item quantity="other">%1$d unread</item>
     </plurals>
     <string name="conversation_row_description">Conversation with %1$s. %2$s. %3$s. %4$s</string>
-    <string name="conversation_row_description_no_snippet">No messages</string>
 
     <string name="thread_empty">No messages in this conversation</string>
     <string name="thread_back">Back</string>
@@ -39,7 +38,6 @@
         <item quantity="one">%1$d/%2$d · %3$d part</item>
         <item quantity="other">%1$d/%2$d · %3$d parts</item>
     </plurals>
-    <string name="thread_send_failed_dismiss">Dismiss</string>
     <string name="thread_mute">Mute conversation</string>
     <string name="thread_unmute">Unmute conversation</string>
 
@@ -54,7 +52,6 @@
     <string name="permission_revoked_title">Message access turned off</string>
     <string name="permission_revoked_body">Some permissions were switched off in system settings, so new messages can no longer arrive here. Turn them back on to resume.</string>
 
-    <string name="send_sms_test">Send test SMS</string>
     <!-- A literal dial string, not prose: translating it would break the send. -->
     <string name="test_recipient" translatable="false">+15551234567</string>
 
@@ -67,7 +64,10 @@
     <string name="compose_error_bad_recipient">Recipient cannot be parsed as a phone number</string>
     <string name="compose_error_empty_body">Message body is empty</string>
     <!-- %1$d is the character limit from SendValidator.MAX_BODY_LENGTH. -->
-    <string name="compose_error_body_too_long">Message body exceeds %1$d characters</string>
+    <plurals name="compose_error_body_too_long">
+        <item quantity="one">Message body exceeds %1$d character</item>
+        <item quantity="other">Message body exceeds %1$d characters</item>
+    </plurals>
 
     <string name="notification_channel_name">Incoming messages</string>
     <string name="notification_channel_description">Alerts when a new text message arrives</string>

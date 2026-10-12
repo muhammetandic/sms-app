@@ -30,8 +30,14 @@ object SmsPermissions {
         Manifest.permission.READ_PHONE_STATE,
     )
 
-    /** Notification access, API 33+ only. */
-    val notification: List<String> = listOf(Manifest.permission.POST_NOTIFICATIONS)
+    /** Notification access, API 33+ only; empty below so callers can concatenate. */
+    val notification: List<String>
+        get() =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                listOf(Manifest.permission.POST_NOTIFICATIONS)
+            } else {
+                emptyList()
+            }
 
     /**
      * Permissions to request in a single prompt. Notifications are requested
