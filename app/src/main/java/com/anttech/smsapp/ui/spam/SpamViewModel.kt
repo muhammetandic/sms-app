@@ -58,7 +58,7 @@ class SpamViewModel(
             resolver.preload()
             val summaries = repository.observeSpamConversations().first()
             resolvedNames.value = summaries.associate { summary ->
-                summary.addressKey to resolver.displayName(summary.displayAddress)
+                summary.addressKey to resolver.displayLabel(summary.displayAddress)
             }
         }
     }

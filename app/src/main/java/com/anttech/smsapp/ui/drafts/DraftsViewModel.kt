@@ -48,7 +48,7 @@ class DraftsViewModel(
         viewModelScope.launch {
             resolver.preload()
             val drafts = repository.observeDraftConversations().first()
-            resolvedNames.value = drafts.associate { it.addressKey to resolver.displayName(it.displayAddress) }
+            resolvedNames.value = drafts.associate { it.addressKey to resolver.displayLabel(it.displayAddress) }
         }
     }
 

@@ -2,6 +2,7 @@ package com.anttech.smsapp.data
 
 import android.content.Context
 import androidx.annotation.VisibleForTesting
+import com.anttech.smsapp.contacts.ContactNameResolver
 import com.anttech.smsapp.data.local.SmsDatabase
 import com.anttech.smsapp.data.telephony.PlatformTelephonyMessageWriter
 import com.anttech.smsapp.data.telephony.ProviderImportCoordinator
@@ -28,6 +29,12 @@ class DataGraph private constructor(
     val telephonyDataSource: TelephonySmsDataSource = TelephonySmsDataSource(context)
 
     val roleManager: SmsRoleManager = SmsRoleManager(context)
+
+    /**
+     * Shared so every screen, notification and receiver resolves numbers through
+     * one cache instead of each building its own and re-querying the provider.
+     */
+    val contactNames: ContactNameResolver = ContactNameResolver(context)
 
     /**
      * Backfills messages the provider already holds.

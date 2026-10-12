@@ -34,7 +34,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.anttech.smsapp.R
-import com.anttech.smsapp.contacts.ContactNameResolver
+import com.anttech.smsapp.data.DataGraph
 import com.anttech.smsapp.sms.block.BlockedSenders
 import java.util.regex.Pattern
 import kotlin.math.abs
@@ -116,7 +116,7 @@ internal fun linkify(
 private fun PhoneActionsSheet(number: String, onDismiss: () -> Unit, onMessage: (String) -> Unit) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
-    val resolver = remember { ContactNameResolver(context) }
+    val resolver = remember(context) { DataGraph.get(context).contactNames }
     var contactName by remember(number) { mutableStateOf<String?>(null) }
     LaunchedEffect(number) {
         contactName = if (resolver.hasPermission()) resolver.displayName(number) else null

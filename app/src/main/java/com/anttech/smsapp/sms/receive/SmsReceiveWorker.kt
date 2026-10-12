@@ -2,7 +2,6 @@ package com.anttech.smsapp.sms.receive
 
 import android.content.Context
 import android.util.Log
-import com.anttech.smsapp.contacts.ContactNameResolver
 import com.anttech.smsapp.data.DataGraph
 import com.anttech.smsapp.notify.IncomingMessageNotifier
 import com.anttech.smsapp.sms.block.BlockedSenders
@@ -89,7 +88,7 @@ object SmsReceiveWorker {
             conversationId = conversationId,
             // Contact lookup needs the contacts permission, which a role loss
             // revokes; the resolver returns null then and the number stands in.
-            displayName = ContactNameResolver(context).displayName(message.address),
+            displayName = DataGraph.get(context).contactNames.displayName(message.address),
         )
         Log.d(
             LogTags.RECEIVE,

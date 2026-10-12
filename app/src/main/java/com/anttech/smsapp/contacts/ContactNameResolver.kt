@@ -84,6 +84,21 @@ class ContactNameResolver(context: Context) {
     }
 
     /**
+     * Display label for a stored [displayAddress], which names several
+     * recipients when a conversation is a group ("+1..., +2..."). Each part is
+     * resolved on its own so a group of contacts reads as names, not as the
+     * whole joined number: a known part shows its name and an unknown part keeps
+     * the number it stored. A single address is just the one-part case.
+     *
+     * Null when nothing resolved, so the caller keeps the address as stored
+     * rather than a churned-up copy of the same digits.
+     */
+    suspend fun displayLabel(displayAddress: String): String? {
+        val parts = displayAddress.splitAddresses()
+        return joinContactLabels(parts.map { part -> part to displayName(part) })
+    }
+
+    /**
      * True when the app may read contacts right now.
      *
      * Checked rather than assumed: `READ_CONTACTS` is only held while the app is
@@ -139,4 +154,30 @@ class ContactNameResolver(context: Context) {
         val index = getColumnIndex(column)
         return if (index < 0 || isNull(index)) null else getString(index)
     }
+}
+
+/**
+ * The individual addresses packed into a stored display address. A group
+ * conversation keeps its recipients comma-separated in one field.
+ */
+internal fun String.splitAddresses(): List<String> =
+    split(',').map(String::trim).filter(String::isNotEmpty)
+
+/**
+ * Folds resolved recipients into one label: each [parts] entry shows its
+ * resolved name when there is one and the raw address otherwise. Returns null
+ * when no part resolved, so the caller keeps the stored address instead of an
+ * equivalent copy of it.
+ *
+ * Pure so the group/label rule is unit-testable without a contacts provider.
+ */
+internal fun joinContactLabels(parts: List<Pair<String, String?>>): String? {
+    if (parts.isEmpty()) return null
+
+    var anyResolved = false
+    val labels = parts.map { (address, name) ->
+        if (name != null) anyResolved = true
+        name ?: address
+    }
+    return if (anyResolved) labels.joinToString(", ") else null
 }

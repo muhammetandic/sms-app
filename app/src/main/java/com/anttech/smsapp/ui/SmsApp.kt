@@ -28,7 +28,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
-import com.anttech.smsapp.contacts.ContactNameResolver
 import com.anttech.smsapp.data.DataGraph
 import com.anttech.smsapp.permission.PermissionSetup
 import com.anttech.smsapp.permission.SmsPermissions
@@ -188,15 +187,18 @@ private fun SmsNavHost(
 ) {
     val context = LocalContext.current
     val navigationScope = rememberCoroutineScope()
-    val repository = DataGraph.get(context).messageRepository
-    val contactNames = remember { ContactNameResolver(context) }
+    val dataGraph = DataGraph.get(context)
+    val repository = dataGraph.messageRepository
+    // One resolver for the whole app, so screens, notifications and the
+    // compose picker all share the same contact cache.
+    val contactNames = dataGraph.contactNames
     // Pull in the provider's history once the role is held. Runs on every entry
     // rather than once per process: the role can be granted after launch, and
     // messages also arrive while another app holds the role.
     LaunchedEffect(roleHeldNow) {
         if (roleHeldNow) {
             contactNames.preload()
-            DataGraph.get(context).providerImport.importIfPossible()
+            dataGraph.providerImport.importIfPossible()
         }
     }
 
@@ -415,7 +417,7 @@ private fun SmsNavHost(
 
         composable(Routes.SEARCH) {
             val viewModel: SearchViewModel = viewModel(
-                factory = SearchViewModel.factory(repository, contactNames::displayName),
+                factory = SearchViewModel.factory(repository, contactNames::displayLabel),
             )
             SearchRoute(
                 viewModel = viewModel,
@@ -444,7 +446,7 @@ private fun SmsNavHost(
             val recipient = entry.arguments?.getString("recipient").orEmpty()
             var threadContactName by remember(recipient) { mutableStateOf<String?>(null) }
             LaunchedEffect(recipient) {
-                threadContactName = contactNames.displayName(recipient)
+                threadContactName = contactNames.displayLabel(recipient)
             }
 
             val viewModel: ThreadViewModel = viewModel(

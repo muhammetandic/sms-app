@@ -92,7 +92,7 @@ class ConversationsViewModel(
             resolver.preload()
             val summaries = repository.observeConversations().first()
             val resolved = summaries.associate { summary ->
-                summary.addressKey to resolver.displayName(summary.displayAddress)
+                summary.addressKey to resolver.displayLabel(summary.displayAddress)
             }
             resolvedNames.value = resolved
         }
