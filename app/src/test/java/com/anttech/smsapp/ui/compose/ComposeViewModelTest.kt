@@ -49,6 +49,59 @@ class ComposeViewModelTest {
     }
 
     @Test
+    fun `a picked contact keeps its name against the address`() = runTest(mainDispatcherRule.testDispatcher) {
+        val model = viewModel(recipient = "")
+
+        model.addRecipient("+905530676691", "Ayşe Yılmaz")
+
+        val state = model.uiState.value
+        assertEquals("+905530676691", state.recipient)
+        assertEquals(mapOf("+905530676691" to "Ayşe Yılmaz"), state.recipientNames)
+    }
+
+    @Test
+    fun `re-adding a picked contact still records its name`() = runTest(mainDispatcherRule.testDispatcher) {
+        val model = viewModel(recipient = "+905530676691")
+
+        model.addRecipient("+905530676691", "Ayşe Yılmaz")
+
+        assertEquals("+905530676691", model.uiState.value.recipient)
+        assertEquals(mapOf("+905530676691" to "Ayşe Yılmaz"), model.uiState.value.recipientNames)
+    }
+
+    @Test
+    fun `a seeded recipient can be named for display`() = runTest(mainDispatcherRule.testDispatcher) {
+        val model = viewModel(recipient = "+15551234567")
+
+        model.registerRecipientName("+15551234567", "John Doe")
+
+        assertEquals(mapOf("+15551234567" to "John Doe"), model.uiState.value.recipientNames)
+    }
+
+    @Test
+    fun `named recipients render every address as a name`() {
+        val names = mapOf("+15551234567" to "John Doe", "+905530676691" to "Ayşe Yılmaz")
+
+        assertEquals(
+            "John Doe, Ayşe Yılmaz",
+            namedRecipients("+15551234567, +905530676691", names),
+        )
+    }
+
+    @Test
+    fun `named recipients step aside when an address has no name`() {
+        val names = mapOf("+15551234567" to "John Doe")
+
+        assertNull(namedRecipients("+15551234567, +19998887777", names))
+    }
+
+    @Test
+    fun `named recipients are null for an empty line`() {
+        assertNull(namedRecipients("", mapOf("+15551234567" to "John Doe")))
+        assertNull(namedRecipients("  ", emptyMap()))
+    }
+
+    @Test
     fun `editing the recipient clears a previous error`() = runTest(mainDispatcherRule.testDispatcher) {
         val model = viewModel(recipient = "12", draft = "hi")
         model.onSend()

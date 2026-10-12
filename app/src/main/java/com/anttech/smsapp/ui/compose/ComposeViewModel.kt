@@ -14,6 +14,12 @@ import kotlinx.coroutines.launch
 
 data class ComposeUiState(
     val recipient: String = "",
+    /**
+     * Contact names for addresses already on the recipient line, keyed by the
+     * trimmed address. The address is still what gets sent; this only lets the
+     * field show a name in its place.
+     */
+    val recipientNames: Map<String, String> = emptyMap(),
     val draft: String = "",
     val isSending: Boolean = false,
     val isFinished: Boolean = false,
@@ -64,8 +70,12 @@ class ComposeViewModel(
         it.copy(recipient = value, error = null)
     }
 
-    /** Adds a picked contact without replacing recipients already selected. */
-    fun addRecipient(address: String) {
+    /**
+     * Adds a picked contact without replacing recipients already selected. A
+     * known [name] is remembered against the address so the field can show the
+     * contact rather than the raw number.
+     */
+    fun addRecipient(address: String, name: String? = null) {
         val trimmed = address.trim()
         if (trimmed.isEmpty()) return
         mutableState.update {
@@ -73,12 +83,22 @@ class ComposeViewModel(
                 .split(',')
                 .map(String::trim)
                 .filter(String::isNotEmpty)
+            val names = if (name != null) it.recipientNames + (trimmed to name) else it.recipientNames
             if (existing.any { current -> current.equals(trimmed, ignoreCase = true) }) {
-                it
+                it.copy(recipientNames = names)
             } else {
-                it.copy(recipient = (existing + trimmed).joinToString(", "), error = null)
+                it.copy(
+                    recipient = (existing + trimmed).joinToString(", "),
+                    recipientNames = names,
+                    error = null,
+                )
             }
         }
+    }
+
+    /** Remembers the contact name behind [address] so the field can display it. */
+    fun registerRecipientName(address: String, name: String) = mutableState.update {
+        it.copy(recipientNames = it.recipientNames + (address.trim() to name))
     }
 
     fun onDraftChanged(value: String) = mutableState.update {

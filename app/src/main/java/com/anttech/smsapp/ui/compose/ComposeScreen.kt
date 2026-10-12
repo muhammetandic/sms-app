@@ -33,9 +33,12 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -58,8 +61,6 @@ class ComposeTestTags {
 @Composable
 fun ComposeRoute(
     viewModel: ComposeViewModel,
-    contactName: String? = null,
-    launchRecipient: String = "",
     onBack: () -> Unit,
     onRequestSmsRole: () -> Unit,
     isSmsRoleHeld: Boolean,
@@ -88,8 +89,6 @@ fun ComposeRoute(
 
     ComposeScreen(
         state = state,
-        contactName = contactName,
-        launchRecipient = launchRecipient,
         snackbarHostState = snackbarHostState,
         isSmsRoleHeld = isSmsRoleHeld,
         onBack = onBack,
@@ -105,8 +104,6 @@ fun ComposeRoute(
 @Composable
 fun ComposeScreen(
     state: ComposeUiState,
-    contactName: String? = null,
-    launchRecipient: String = "",
     snackbarHostState: SnackbarHostState,
     isSmsRoleHeld: Boolean,
     onBack: () -> Unit,
@@ -152,19 +149,15 @@ fun ComposeScreen(
             }
 
             val recipientLabel = stringResource(R.string.compose_recipient_label)
-            // The contact name stands in for the number only while the field
-            // still holds the recipient it was resolved from. Once the user
-            // edits to a different single address the name is stale, and showing
-            // it would both mislabel and lock the field, so it steps aside.
-            val shownContactName = contactName?.takeIf {
-                !state.recipient.contains(',') &&
-                    state.recipient.trim() == launchRecipient.trim()
-            }
+            // Recipients are stored as addresses because that is what gets sent,
+            // but a recipient resolved to a contact is shown by name instead. The
+            // raw addresses come back the instant the field is focused, so the
+            // name is never something the user has to type over to edit.
+            var recipientEditing by remember { mutableStateOf(false) }
+            val displayRecipient =
+                if (recipientEditing) null else namedRecipients(state.recipient, state.recipientNames)
             OutlinedTextField(
-                // Keep the address in the ViewModel for sending, but show the
-                // contact's display name when this recipient came from a
-                // contact-aware SENDTO launch.
-                value = shownContactName ?: state.recipient,
+                value = displayRecipient ?: state.recipient,
                 onValueChange = onRecipientChanged,
                 label = { Text(stringResource(R.string.compose_recipient_hint)) },
                 trailingIcon = {
@@ -180,10 +173,10 @@ fun ComposeScreen(
                 },
                 shape = RoundedCornerShape(12.dp),
                 singleLine = true,
-                readOnly = shownContactName != null,
                 enabled = !state.isSending,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onFocusChanged { recipientEditing = it.isFocused }
                     .testTag(ComposeTestTags.RECIPIENT_FIELD)
                     .semantics { contentDescription = recipientLabel },
             )
@@ -254,4 +247,17 @@ private fun composeErrorText(error: ComposeError): String = when (error) {
                 SendValidator.MAX_BODY_LENGTH,
             )
     }
+}
+
+/**
+ * Renders the whole recipient line using contact names, or null when any address
+ * on it has no known name — in which case the caller shows the raw addresses so
+ * a partially resolved line is never mislabelled. Split, trim, and lookup match
+ * the way [ComposeViewModel.addRecipient] stores addresses.
+ */
+internal fun namedRecipients(recipient: String, names: Map<String, String>): String? {
+    val parts = recipient.split(',').map(String::trim).filter(String::isNotEmpty)
+    if (parts.isEmpty()) return null
+    val resolved = parts.map { address -> names[address] ?: return null }
+    return resolved.joinToString(", ")
 }

@@ -297,10 +297,6 @@ private fun SmsNavHost(
             // parameter, so the composer is populated even after a send has
             // already cleared the pending copy.
             val request = servedComposeRequest
-            var composeContactName by remember(request?.recipient) { mutableStateOf<String?>(null) }
-            LaunchedEffect(request?.recipient) {
-                composeContactName = request?.recipient?.let { contactNames.displayName(it) }
-            }
             val viewModel: ComposeViewModel = viewModel(
                 factory = ComposeViewModel.factory(
                     initialRecipient = request?.recipient.orEmpty(),
@@ -313,16 +309,35 @@ private fun SmsNavHost(
                 ),
             )
 
+            // Resolve the seeded recipients to contact names for display. Only
+            // the names are registered: the addresses stay in the state and are
+            // what gets sent.
+            LaunchedEffect(request?.recipient) {
+                request?.recipient
+                    ?.split(',')
+                    ?.map(String::trim)
+                    ?.filter(String::isNotEmpty)
+                    ?.forEach { address ->
+                        contactNames.displayName(address)?.let { name ->
+                            viewModel.registerRecipientName(address, name)
+                        }
+                    }
+            }
+
             val contactLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.PickContact(),
             ) { uri ->
                 uri ?: return@rememberLauncherForActivityResult
-                queryContactPhoneNumber(context.contentResolver, uri)?.let(viewModel::addRecipient)
+                val number = queryContactPhoneNumber(context.contentResolver, uri)
+                    ?: return@rememberLauncherForActivityResult
+                // The picker only hands back the number; look the name up so the
+                // field shows the contact rather than the raw digits.
+                navigationScope.launch {
+                    viewModel.addRecipient(number, contactNames.displayName(number))
+                }
             }
             ComposeRoute(
                 viewModel = viewModel,
-                contactName = composeContactName,
-                launchRecipient = request?.recipient.orEmpty(),
                 onBack = {
                     val composeState = viewModel.uiState.value
                     navigationScope.launch {
