@@ -93,7 +93,10 @@ class ThreadViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-        initialValue = ThreadUiState(),
+        // Seed the first frame from the role read at construction instead of the
+        // read-only default, so opening a thread does not flash the role banner
+        // while the messages query warms up.
+        initialValue = ThreadUiState(isReadOnly = !roleHeld.value),
     )
 
     init {

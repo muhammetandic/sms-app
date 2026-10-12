@@ -110,6 +110,16 @@ class ConversationsViewModelTest {
     }
 
     @Test
+    fun `the opening frame already knows the role instead of flashing the banner`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // Read before any collector starts the upstream: this is what the
+            // first composition renders, so a held role must not look lost while
+            // the conversations query is still warming up.
+            assertFalse(ConversationsViewModel(repository, { true }).uiState.value.isReadOnly)
+            assertTrue(ConversationsViewModel(repository, { false }).uiState.value.isReadOnly)
+        }
+
+    @Test
     fun `a new inbound message appears without any manual refresh`() = runTest(mainDispatcherRule.testDispatcher) {
         val viewModel = ConversationsViewModel(repository, { true })
         assertTrue(viewModel.uiState.first { !it.isLoading }.conversations.isEmpty())

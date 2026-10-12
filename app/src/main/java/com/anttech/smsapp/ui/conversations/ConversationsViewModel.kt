@@ -75,7 +75,10 @@ class ConversationsViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-        initialValue = ConversationsUiState(),
+        // The role is already known synchronously, so seed the first frame with
+        // it. Seeding the default (read-only) paints the "role lost" banner
+        // while the first query runs, on every open, even while the role is held.
+        initialValue = ConversationsUiState(isReadOnly = !roleHeld.value),
     )
 
     /**

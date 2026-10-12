@@ -182,6 +182,17 @@ class ThreadViewModelTest {
     }
 
     @Test
+    fun `the opening frame already knows the role instead of flashing the banner`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val conversationId = givenInbound("hi", 1_000L)
+
+            // The seed is what the first composition renders, before the message
+            // query emits, so it must track the role rather than default to lost.
+            assertFalse(viewModel(conversationId, roleHeld = { true }).uiState.value.isReadOnly)
+            assertTrue(viewModel(conversationId, roleHeld = { false }).uiState.value.isReadOnly)
+        }
+
+    @Test
     fun `a thread with no resolved address cannot send`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("hi", 1_000L)
         var sendCount = 0
