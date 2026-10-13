@@ -16,6 +16,14 @@ import kotlinx.coroutines.withContext
  */
 interface SmsMessageSource {
     suspend fun queryAllMessages(limit: Int = 5_000): List<ProviderMessage>
+
+    /**
+     * The highest provider `_id` currently visible, or null when the store is
+     * empty. Cheap (a `MAX` on the rowid index) and read before a full
+     * [queryAllMessages], so the import can prove nothing new arrived instead
+     * of re-reading and re-sorting all of history.
+     */
+    suspend fun queryMaxMessageId(): Long?
 }
 
 /**
@@ -138,6 +146,24 @@ class TelephonySmsDataSource(context: Context) : SmsMessageSource {
                     rows.toProviderMessage()?.let(::add)
                 }
             }
+        }
+    }
+
+    override suspend fun queryMaxMessageId(): Long? = withContext(Dispatchers.IO) {
+        // MAX over the provider's rowid index is O(1); scanning the whole table
+        // would make the "nothing new" check as expensive as the import itself.
+        val cursor = runCatching {
+            resolver.query(
+                SMS_URI,
+                arrayOf("MAX(${Telephony.Sms._ID})"),
+                null,
+                null,
+                null,
+            )
+        }.getOrNull() ?: return@withContext null
+
+        cursor.use { rows ->
+            if (!rows.moveToFirst() || rows.isNull(0)) null else rows.getLong(0)
         }
     }
 

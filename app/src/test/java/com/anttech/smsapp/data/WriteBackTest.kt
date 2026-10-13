@@ -40,6 +40,7 @@ class WriteBackTest {
             database.messageDao(),
             database.draftDao(),
             writer,
+            database = database,
         )
     }
 

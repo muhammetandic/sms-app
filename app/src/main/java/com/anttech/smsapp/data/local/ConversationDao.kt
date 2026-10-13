@@ -61,6 +61,15 @@ interface ConversationDao {
     @Update
     suspend fun update(conversation: ConversationEntity)
 
+    /**
+     * Raises a conversation's most-recent timestamp, only when the new one is
+     * newer. The guard keeps a replayed import (older rows) from pushing the
+     * timestamp backwards, and lets one statement do the job of the read +
+     * compare the old path ran per row.
+     */
+    @Query("UPDATE conversations SET last_message_at = :lastMessageAt WHERE id = :id AND last_message_at < :lastMessageAt")
+    suspend fun updateLastMessageAt(id: Long, lastMessageAt: Long)
+
     @Query("UPDATE conversations SET unread_count = 0 WHERE id = :id")
     suspend fun markRead(id: Long)
 

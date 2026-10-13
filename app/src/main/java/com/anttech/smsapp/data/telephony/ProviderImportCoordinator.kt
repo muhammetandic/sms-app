@@ -22,15 +22,31 @@ class ProviderImportCoordinator(
     private val mutex = Mutex()
 
     /**
-     * True when the app may read the provider right now.
+     * Backfills provider history when there is anything to backfill.
      *
-     * Both conditions are needed: the role gates the provider's read permission,
-     * and the query is skipped entirely when it is absent so a role loss does
-     * not produce a wall of SecurityExceptions.
+     * Returns the number of local rows added (0 when the role is not held, when
+     * the provider is unreadable, or when the watermark shows nothing new). The
+     * role check comes first so a role loss never reaches the provider and never
+     * produces a wall of SecurityExceptions.
      */
     suspend fun importIfPossible(): Int = mutex.withLock {
         if (!hasSmsRole()) {
             Log.d(LogTags.STORE, "Skipping provider import: SMS role not held")
+            return@withLock 0
+        }
+
+        // Nothing new since the last import means nothing to backfill, so the
+        // cheap MAX(_id) probe stands in for the full read. Provider ids only
+        // ever grow, and the mark stores the highest id an import has processed
+        // (not just the highest it kept), so a run with nothing new is a SELECT
+        // MAX on the provider and one local read.
+        val providerMax = runCatching { dataSource.queryMaxMessageId() }
+            .onFailure { Log.w(LogTags.STORE, "Provider max-id query failed", it) }
+            .getOrNull()
+            ?: return@withLock 0
+        val watermark = repository.providerImportWatermark() ?: 0L
+        if (providerMax <= watermark) {
+            Log.d(LogTags.STORE, "Provider import skipped: no rows newer than $watermark")
             return@withLock 0
         }
 
@@ -41,6 +57,10 @@ class ProviderImportCoordinator(
         if (messages.isEmpty()) return@withLock 0
 
         val inserted = repository.importFromProvider(messages)
+        // Record the highest id this pass saw, not the highest it stored: a row
+        // it deliberately skipped (no address, or already held under a different
+        // key) must not be re-read on every future launch.
+        repository.recordProviderImportWatermark(messages.maxOf { it.id })
         Log.d(LogTags.STORE, "Provider import added $inserted of ${messages.size} messages")
         inserted
     }

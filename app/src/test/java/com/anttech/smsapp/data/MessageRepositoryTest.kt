@@ -34,7 +34,12 @@ class MessageRepositoryTest {
             ApplicationProvider.getApplicationContext(),
             SmsDatabase::class.java,
         ).build()
-        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao())
+        repository = MessageRepository(
+            database.conversationDao(),
+            database.messageDao(),
+            database.draftDao(),
+            database = database,
+        )
     }
 
     @After

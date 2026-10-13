@@ -37,7 +37,12 @@ class ProviderImportTest {
             ApplicationProvider.getApplicationContext(),
             SmsDatabase::class.java,
         )
-        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao())
+        repository = MessageRepository(
+            database.conversationDao(),
+            database.messageDao(),
+            database.draftDao(),
+            database = database,
+        )
     }
 
     @After
@@ -217,6 +222,45 @@ class ProviderImportTest {
     }
 
     @Test
+    fun `import skips the full read when nothing new arrived`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val dataSource = FakeDataSource(listOf(providerMessage(1L), providerMessage(2L, body = "another")))
+            val coordinator = ProviderImportCoordinator(
+                repository = repository,
+                dataSource = dataSource,
+                hasSmsRole = { true },
+            )
+
+            assertEquals(2, coordinator.importIfPossible())
+            // The launch chore runs on every start, so a second run with no new
+            // rows must not re-read history: the store now holds the provider's
+            // max id, and the watermark short-circuits before queryAllMessages.
+            assertEquals(0, coordinator.importIfPossible())
+            assertEquals(1, dataSource.queryCount)
+        }
+
+    @Test
+    fun `an unmappable newest row still advances the watermark`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // The newest provider row has no address, so the import drops it (no
+            // conversation to file it under) and it never earns a local
+            // provider_id. The watermark must still move past it, or every
+            // launch would re-read the whole provider to learn nothing.
+            val dataSource = FakeDataSource(
+                listOf(providerMessage(1L), providerMessage(2L, address = "")),
+            )
+            val coordinator = ProviderImportCoordinator(
+                repository = repository,
+                dataSource = dataSource,
+                hasSmsRole = { true },
+            )
+
+            assertEquals(1, coordinator.importIfPossible())
+            assertEquals(0, coordinator.importIfPossible())
+            assertEquals(1, dataSource.queryCount)
+        }
+
+    @Test
     fun `a provider query failure yields no rows rather than crashing`() =
         runTest(mainDispatcherRule.testDispatcher) {
             val dataSource = FakeDataSource(emptyList(), failWith = SecurityException("no role"))
@@ -242,9 +286,10 @@ class ProviderImportTest {
         val second = async { coordinator.importIfPossible() }
         val inserted = listOf(first.await(), second.await())
 
-        // The mutex serialises rather than deduplicates, so both may query. What
-        // matters is that the second run's inserts are rejected by the unique
-        // index, leaving each message stored exactly once.
+        // The mutex serialises the pair. The first run imports both rows and
+        // leaves the store's watermark at their highest id; the second either
+        // finds them already linked (old path) or the watermark no longer
+        // differs (new path), so in both cases only the first inserts.
         assertEquals(2, inserted.sum())
         val conversation = repository.observeConversations().first().single()
         assertEquals(2, repository.observeMessages(conversation.id).first().size)
@@ -262,6 +307,11 @@ class ProviderImportTest {
             queryCount += 1
             failWith?.let { throw it }
             return messages
+        }
+
+        override suspend fun queryMaxMessageId(): Long? {
+            failWith?.let { throw it }
+            return messages.maxOfOrNull { it.id }
         }
     }
 }

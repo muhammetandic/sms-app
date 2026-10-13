@@ -69,6 +69,12 @@ data class ConversationEntity(
     indices = [
         Index(value = ["conversation_id", "sent_at"]),
         Index(value = ["dedupe_key"], unique = true),
+        // Looked up once per row of a provider import (is this id already
+        // stored?) and, without it, that lookup was a full scan of a
+        // history-sized table per row. The startup stuck-send sweep scans on
+        // status for the same table.
+        Index(value = ["provider_id"]),
+        Index(value = ["status"]),
     ],
 )
 data class MessageEntity(
@@ -146,6 +152,33 @@ data class DraftEntity(
     @ColumnInfo(name = "body")
     val body: String,
 )
+
+/**
+ * Single-row high-water mark for the provider import.
+ *
+ * The import compares the provider's newest `_id` against this value and skips
+ * the whole read when it has not moved. It has to advance even for rows the
+ * import does not keep - a corrupt row with no address, or one whose content
+ * already exists locally - because those rows never earn a `provider_id` on a
+ * stored message. Deriving the mark from `MAX(provider_id)` instead would stall
+ * on such a row and force a full re-read of history on every launch.
+ *
+ * Kept in the same database as the messages so the two cannot drift apart: a
+ * fresh database means a fresh mark, which correctly re-imports.
+ */
+@Entity(tableName = "import_state")
+data class ImportStateEntity(
+    /** Only ever one row; the fixed key makes a save an overwrite. */
+    @PrimaryKey
+    val id: Int = SINGLETON_ID,
+
+    @ColumnInfo(name = "provider_high_water")
+    val providerHighWater: Long = 0L,
+) {
+    companion object {
+        const val SINGLETON_ID = 0
+    }
+}
 
 enum class MessageDirection {
     INCOMING,

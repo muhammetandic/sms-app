@@ -9,8 +9,13 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [ConversationEntity::class, MessageEntity::class, DraftEntity::class],
-    version = 14,
+    entities = [
+        ConversationEntity::class,
+        MessageEntity::class,
+        DraftEntity::class,
+        ImportStateEntity::class,
+    ],
+    version = 15,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -21,6 +26,8 @@ abstract class SmsDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
 
     abstract fun draftDao(): DraftDao
+
+    abstract fun importStateDao(): ImportStateDao
 
     companion object {
         private const val NAME = "sms.db"
@@ -328,6 +335,34 @@ abstract class SmsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Indexes the provider id and the send status on messages, and adds the
+         * provider import's high-water mark.
+         *
+         * The provider import answers "is this provider row already stored?"
+         * once per imported row, and the startup sweep finds stuck SENDING rows
+         * by status; neither column was indexed, so both were full scans of the
+         * history table. The watermark table lets a launch with nothing new skip
+         * the whole provider read. No existing row is rewritten.
+         */
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_messages_provider_id` " +
+                        "ON `messages` (`provider_id`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_messages_status` " +
+                        "ON `messages` (`status`)",
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `import_state` " +
+                        "(`id` INTEGER NOT NULL, `provider_high_water` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`id`))",
+                )
+            }
+        }
+
         @Volatile
         private var instance: SmsDatabase? = null
 
@@ -352,6 +387,7 @@ abstract class SmsDatabase : RoomDatabase() {
                     MIGRATION_11_12,
                     MIGRATION_12_13,
                     MIGRATION_13_14,
+                    MIGRATION_14_15,
                 )
                 .build()
     }

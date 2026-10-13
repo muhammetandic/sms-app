@@ -24,6 +24,7 @@ class DataGraph private constructor(
         messageDao = database.messageDao(),
         draftDao = database.draftDao(),
         telephonyWriter = PlatformTelephonyMessageWriter(context),
+        database = database,
     )
 
     val telephonyDataSource: TelephonySmsDataSource = TelephonySmsDataSource(context)
