@@ -31,7 +31,7 @@ import org.robolectric.annotation.Config
 class SmsDatabaseMigrationTest {
 
     /** The schema this test migrates up to; keep in lockstep with `version` on [SmsDatabase]. */
-    private val currentVersion = 15
+    private val currentVersion = 16
 
     @get:Rule
     val helper = MigrationTestHelper(
@@ -43,7 +43,7 @@ class SmsDatabaseMigrationTest {
     fun `migrating every released schema reaches the current schema`() {
         // Version 6's schema JSON was never committed, so there is no asset to
         // seed a v6 database from; every other start version has one.
-        val startVersions = listOf(1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14)
+        val startVersions = listOf(1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15)
         for (start in startVersions) {
             val name = "migration-$start"
             helper.createDatabase(name, start)
@@ -87,6 +87,10 @@ class SmsDatabaseMigrationTest {
             assertEquals("+15550000001", conversation.addressKey)
             assertEquals(2, conversation.unreadCount)
             assertEquals(1, upgraded.messageDao().observeMessages(1).first().size)
+            // The FTS index is built by the migration's `rebuild`, not by the
+            // insert that predates it, so a search for the migrated body only
+            // succeeds if that rebuild ran.
+            assertEquals(1, upgraded.messageDao().searchMessages("hello*", "hello").first().size)
         } finally {
             upgraded.close()
         }
@@ -108,6 +112,7 @@ class SmsDatabaseMigrationTest {
             SmsDatabase.MIGRATION_12_13,
             SmsDatabase.MIGRATION_13_14,
             SmsDatabase.MIGRATION_14_15,
+            SmsDatabase.MIGRATION_15_16,
         )
     }
 }

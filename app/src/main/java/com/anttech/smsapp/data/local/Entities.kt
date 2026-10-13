@@ -3,6 +3,8 @@ package com.anttech.smsapp.data.local
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Fts4
+import androidx.room.FtsOptions
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -128,6 +130,28 @@ data class MessageEntity(
      */
     @ColumnInfo(name = "sim_slot")
     val simSlot: Int? = null,
+)
+
+/**
+ * External-content full-text index over [MessageEntity.body].
+ *
+ * Searching history with `LIKE '%term%'` cannot use an index, so it reads every
+ * stored message - the one query whose cost grows without bound as history does.
+ * This FTS4 index turns a body search into a term lookup instead. It stores no
+ * copy of the text: `content=MessageEntity` points it at `messages`, and the
+ * triggers created alongside it keep the index in step with inserts, updates
+ * and deletes.
+ *
+ * The unicode61 tokenizer is required, not a preference. The default `simple`
+ * tokenizer considers only ASCII letters and digits to be word characters, so
+ * every Turkish letter becomes a separator and `şeker` would be indexed as
+ * `eker`. unicode61 treats all Unicode letters as word characters.
+ */
+@Fts4(contentEntity = MessageEntity::class, tokenizer = FtsOptions.TOKENIZER_UNICODE61)
+@Entity(tableName = "messages_fts")
+data class MessageFtsEntity(
+    @ColumnInfo(name = "body")
+    val body: String,
 )
 
 /**

@@ -435,4 +435,59 @@ class MessageRepositoryTest {
 
         assertEquals(1, repository.observeConversations().first().size)
     }
+
+    @Test
+    fun `search finds a message by a word in its body`() = runTest {
+        repository.recordInbound(inbound(body = "dinner at eight"), partCount = 1)
+
+        val hits = repository.observeMessageSearch("dinner").first()
+
+        assertEquals(1, hits.size)
+        assertEquals("dinner at eight", hits.single().body)
+    }
+
+    @Test
+    fun `search matches a body word while it is still being typed`() = runTest {
+        repository.recordInbound(inbound(body = "dinner at eight"), partCount = 1)
+
+        assertEquals(1, repository.observeMessageSearch("dinn").first().size)
+    }
+
+    @Test
+    fun `search matches a body word through turkish diacritics`() = runTest {
+        repository.recordInbound(inbound(body = "şeker gibi bir gün"), partCount = 1)
+
+        // unicode61 folds diacritics, so the ASCII spelling finds it as well.
+        assertEquals(1, repository.observeMessageSearch("şeker").first().size)
+        assertEquals(1, repository.observeMessageSearch("seker").first().size)
+    }
+
+    @Test
+    fun `search still finds a conversation by a partial address`() = runTest {
+        repository.recordInbound(inbound(address = "+15551234567", body = "unrelated"), partCount = 1)
+
+        val hits = repository.observeMessageSearch("5551234").first()
+
+        assertEquals(1, hits.size)
+        assertEquals("unrelated", hits.single().body)
+    }
+
+    @Test
+    fun `search treats an operator word as a term instead of failing`() = runTest {
+        repository.recordInbound(inbound(body = "either this or that"), partCount = 1)
+
+        // A raw MATCH 'OR' is a syntax error; the builder quotes it.
+        assertEquals(1, repository.observeMessageSearch("OR").first().size)
+    }
+
+    @Test
+    fun `search drops a message once it is deleted`() = runTest {
+        repository.recordInbound(inbound(body = "keep me"), partCount = 1)
+        val conversationId = requireNotNull(repository.conversationIdFor(inbound().address))
+        val doomed = repository.observeMessages(conversationId).first().single()
+
+        database.messageDao().delete(doomed.id)
+
+        assertTrue(repository.observeMessageSearch("keep").first().isEmpty())
+    }
 }

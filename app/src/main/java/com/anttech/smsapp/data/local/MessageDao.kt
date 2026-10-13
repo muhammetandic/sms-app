@@ -122,6 +122,23 @@ interface MessageDao {
      * Search over message bodies and the address of the conversation they sit
      * in. Contact display names are not queryable here (they live in another
      * app), so they are filtered at the presentation layer.
+     *
+     * Bodies are matched through the FTS index rather than `LIKE '%term%'`, so a
+     * search no longer reads every stored message. `match` is the FTS expression
+     * built from the query (see [ftsMatchExpression]); it is null when the query
+     * holds no searchable token, and `MATCH NULL` then selects no rows without
+     * error, leaving the address branch - a plain LIKE - as the whole search.
+     *
+     * The two branches are combined with UNION rather than a single OR because
+     * an OR between an indexed match and an unindexed LIKE makes SQLite fall
+     * back to scanning `messages`, which would throw the index away. As separate
+     * branches each keeps its own access path: the FTS index for the body and,
+     * for the address, a scan of the small `conversations` table feeding the
+     * `conversation_id` index on `messages`. The address branch is written as a
+     * subquery on `conversation_id` rather than as a LIKE against the joined
+     * `conversations` row on purpose: the latter lets the planner instead scan
+     * every message and test the address per row, which is the scan this query
+     * exists to avoid. UNION also collapses a row that matched both.
      */
     @Query(
         """
@@ -129,13 +146,19 @@ interface MessageDao {
                c.address_key AS address_key, c.display_address AS display_address,
                m.body AS body, m.sent_at AS sent_at, m.direction AS direction
           FROM messages m JOIN conversations c ON c.id = m.conversation_id
-         WHERE m.body LIKE '%' || :query || '%'
-            OR c.display_address LIKE '%' || :query || '%'
-         ORDER BY m.sent_at DESC
+         WHERE m.id IN (SELECT rowid FROM messages_fts WHERE messages_fts MATCH :match)
+         UNION
+        SELECT m.id AS message_id, m.conversation_id AS conversation_id,
+               c.address_key AS address_key, c.display_address AS display_address,
+               m.body AS body, m.sent_at AS sent_at, m.direction AS direction
+          FROM messages m JOIN conversations c ON c.id = m.conversation_id
+         WHERE m.conversation_id IN (
+                   SELECT id FROM conversations WHERE display_address LIKE '%' || :query || '%')
+         ORDER BY sent_at DESC
          LIMIT 200
         """,
     )
-    fun searchMessages(query: String): Flow<List<MessageSearchHit>>
+    fun searchMessages(match: String?, query: String): Flow<List<MessageSearchHit>>
 
     /** Returns the number of rows removed, which is 0 when the id is already gone. */
     @Query("DELETE FROM messages WHERE id = :id")

@@ -12,10 +12,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         ConversationEntity::class,
         MessageEntity::class,
+        MessageFtsEntity::class,
         DraftEntity::class,
         ImportStateEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -363,6 +364,54 @@ abstract class SmsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds the full-text index over message bodies.
+         *
+         * Searching history used to run `body LIKE '%term%'`, which cannot use
+         * an index and therefore read every stored message; on a long history
+         * that is the one query whose cost grows without bound. The FTS4 table
+         * is external content over `messages` (`content=MessageEntity`), so it
+         * stores no copy of the text: rows come from `messages`, and the four
+         * sync triggers keep the index aligned with every insert, update and
+         * delete, exactly as Room creates them for a fresh database.
+         *
+         * The index has to be built for rows that already exist, which is what
+         * the `rebuild` command does: it walks `messages` and indexes every body.
+         * Without it an upgrade would search only messages received after the
+         * upgrade. The tokenizer must be named here because FTS4 defaults to
+         * `simple`, which treats every non-ASCII letter as a separator and would
+         * split Turkish words (`şeker` would index as `eker`).
+         */
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE VIRTUAL TABLE IF NOT EXISTS `messages_fts` " +
+                        "USING FTS4(`body` TEXT NOT NULL, tokenize=unicode61, content=`messages`)",
+                )
+                db.execSQL(
+                    "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_messages_fts_BEFORE_UPDATE " +
+                        "BEFORE UPDATE ON `messages` BEGIN DELETE FROM `messages_fts` " +
+                        "WHERE `docid`=OLD.`rowid`; END",
+                )
+                db.execSQL(
+                    "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_messages_fts_BEFORE_DELETE " +
+                        "BEFORE DELETE ON `messages` BEGIN DELETE FROM `messages_fts` " +
+                        "WHERE `docid`=OLD.`rowid`; END",
+                )
+                db.execSQL(
+                    "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_messages_fts_AFTER_UPDATE " +
+                        "AFTER UPDATE ON `messages` BEGIN INSERT INTO `messages_fts`(`docid`, `body`) " +
+                        "VALUES (NEW.`rowid`, NEW.`body`); END",
+                )
+                db.execSQL(
+                    "CREATE TRIGGER IF NOT EXISTS room_fts_content_sync_messages_fts_AFTER_INSERT " +
+                        "AFTER INSERT ON `messages` BEGIN INSERT INTO `messages_fts`(`docid`, `body`) " +
+                        "VALUES (NEW.`rowid`, NEW.`body`); END",
+                )
+                db.execSQL("INSERT INTO `messages_fts`(`messages_fts`) VALUES('rebuild')")
+            }
+        }
+
         @Volatile
         private var instance: SmsDatabase? = null
 
@@ -388,6 +437,7 @@ abstract class SmsDatabase : RoomDatabase() {
                     MIGRATION_12_13,
                     MIGRATION_13_14,
                     MIGRATION_14_15,
+                    MIGRATION_15_16,
                 )
                 .build()
     }

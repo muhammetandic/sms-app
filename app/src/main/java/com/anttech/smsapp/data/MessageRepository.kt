@@ -15,6 +15,7 @@ import com.anttech.smsapp.data.local.MessageEntity
 import com.anttech.smsapp.data.local.MessageSearchHit
 import com.anttech.smsapp.data.local.MessageStatus
 import com.anttech.smsapp.data.local.SmsDatabase
+import com.anttech.smsapp.data.local.ftsMatchExpression
 import com.anttech.smsapp.data.telephony.ProviderMessage
 import com.anttech.smsapp.data.telephony.ProviderMessageMapper
 import com.anttech.smsapp.data.telephony.ProviderRowRef
@@ -467,7 +468,7 @@ class MessageRepository(
 
     /** Messages and conversations whose body or address matches, newest first. */
     fun observeMessageSearch(query: String): Flow<List<MessageSearchHit>> =
-        messageDao.searchMessages(query)
+        messageDao.searchMessages(ftsMatchExpression(query), query)
 
     /** The stored draft for a conversation, or null when it has none. */
     fun observeDraft(conversationId: Long): Flow<String?> =
