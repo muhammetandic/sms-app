@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
 import com.anttech.smsapp.ui.conversations.Avatar
-import com.anttech.smsapp.ui.theme.iconCommand
+import com.anttech.smsapp.ui.theme.iconNeutral
 
 @Composable
 fun SearchRoute(
@@ -95,7 +95,7 @@ fun SearchScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = backLabel,
-                            tint = MaterialTheme.colorScheme.iconCommand,
+                            tint = MaterialTheme.colorScheme.iconNeutral,
                         )
                     }
                 },

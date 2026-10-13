@@ -80,7 +80,8 @@ import com.anttech.smsapp.sms.send.SmsSegments
 import com.anttech.smsapp.ui.TimeFormat
 import com.anttech.smsapp.ui.components.LinkifiedText
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
-import com.anttech.smsapp.ui.theme.iconCommand
+import com.anttech.smsapp.ui.theme.iconMute
+import com.anttech.smsapp.ui.theme.iconNeutral
 import kotlinx.coroutines.launch
 
 class ThreadTestTags {
@@ -240,7 +241,7 @@ fun ThreadScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = backLabel,
-                            tint = MaterialTheme.colorScheme.iconCommand,
+                            tint = MaterialTheme.colorScheme.iconNeutral,
                         )
                     }
                 },
@@ -262,7 +263,14 @@ fun ThreadScreen(
                             contentDescription = stringResource(
                                 if (muted) R.string.thread_unmute else R.string.thread_mute,
                             ),
-                            tint = MaterialTheme.colorScheme.iconCommand,
+                            // A silenced thread is the one with something to say:
+                            // it takes the muted hue while the ordinary bell stays
+                            // neutral, so the two states never read alike.
+                            tint = if (muted) {
+                                MaterialTheme.colorScheme.iconMute
+                            } else {
+                                MaterialTheme.colorScheme.iconNeutral
+                            },
                         )
                     }
                 },

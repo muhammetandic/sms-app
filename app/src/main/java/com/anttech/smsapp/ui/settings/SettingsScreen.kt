@@ -53,7 +53,7 @@ import com.anttech.smsapp.sms.send.activeSmsSubscriptions
 import com.anttech.smsapp.notify.NotificationActionPreferences
 import com.anttech.smsapp.notify.NotificationActionReceiver
 import com.anttech.smsapp.ui.rememberSmsRoleState
-import com.anttech.smsapp.ui.theme.iconCommand
+import com.anttech.smsapp.ui.theme.iconNeutral
 import kotlinx.coroutines.launch
 
 /**
@@ -195,7 +195,7 @@ fun SettingsScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.thread_back),
-                            tint = MaterialTheme.colorScheme.iconCommand,
+                            tint = MaterialTheme.colorScheme.iconNeutral,
                         )
                     }
                 },
@@ -353,7 +353,7 @@ fun SettingsScreen(
                                         contentDescription = stringResource(
                                             R.string.settings_block_remove,
                                         ),
-                                        tint = MaterialTheme.colorScheme.iconCommand,
+                                        tint = MaterialTheme.colorScheme.iconNeutral,
                                     )
                                 }
                             }

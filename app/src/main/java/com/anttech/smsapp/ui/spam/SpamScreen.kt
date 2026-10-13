@@ -33,8 +33,9 @@ import com.anttech.smsapp.R
 import com.anttech.smsapp.ui.components.ConfirmDeleteConversations
 import com.anttech.smsapp.ui.conversations.ConversationItem
 import com.anttech.smsapp.ui.conversations.ConversationRow
-import com.anttech.smsapp.ui.theme.iconCommand
-import com.anttech.smsapp.ui.theme.iconSelected
+import com.anttech.smsapp.ui.theme.iconDelete
+import com.anttech.smsapp.ui.theme.iconNeutral
+import com.anttech.smsapp.ui.theme.iconRestore
 
 @Composable
 fun SpamRoute(
@@ -103,7 +104,7 @@ fun SpamScreen(
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = closeSelectionLabel,
-                                tint = MaterialTheme.colorScheme.iconSelected,
+                                tint = MaterialTheme.colorScheme.iconNeutral,
                             )
                         }
                     } else {
@@ -111,7 +112,7 @@ fun SpamScreen(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = backLabel,
-                                tint = MaterialTheme.colorScheme.iconCommand,
+                                tint = MaterialTheme.colorScheme.iconNeutral,
                             )
                         }
                     }
@@ -125,14 +126,14 @@ fun SpamScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_restore),
                                 contentDescription = moveToInboxLabel,
-                                tint = MaterialTheme.colorScheme.iconSelected,
+                                tint = MaterialTheme.colorScheme.iconRestore,
                             )
                         }
                         IconButton(onClick = { pendingDelete = selectedIds }) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_delete),
                                 contentDescription = deleteLabel,
-                                tint = MaterialTheme.colorScheme.iconSelected,
+                                tint = MaterialTheme.colorScheme.iconDelete,
                             )
                         }
                     }
@@ -166,7 +167,7 @@ fun SpamScreen(
                                         Icon(
                                             painter = painterResource(R.drawable.ic_action_restore),
                                             contentDescription = stringResource(R.string.spam_restore),
-                                            tint = MaterialTheme.colorScheme.iconCommand,
+                                            tint = MaterialTheme.colorScheme.iconRestore,
                                         )
                                     }
                                 }

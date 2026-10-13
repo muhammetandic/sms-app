@@ -32,7 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
 import com.anttech.smsapp.ui.conversations.ConversationRow
-import com.anttech.smsapp.ui.theme.iconCommand
+import com.anttech.smsapp.ui.theme.iconDelete
+import com.anttech.smsapp.ui.theme.iconNeutral
+import com.anttech.smsapp.ui.theme.iconSend
 import androidx.compose.ui.text.style.TextOverflow
 
 @Composable
@@ -65,7 +67,7 @@ fun DraftsScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.thread_back),
-                            tint = MaterialTheme.colorScheme.iconCommand,
+                            tint = MaterialTheme.colorScheme.iconNeutral,
                         )
                     }
                 },
@@ -138,14 +140,14 @@ private fun DraftItem(
                 Icon(
                     painter = painterResource(R.drawable.ic_action_reply),
                     contentDescription = stringResource(R.string.drafts_send),
-                    tint = MaterialTheme.colorScheme.iconCommand,
+                    tint = MaterialTheme.colorScheme.iconSend,
                 )
             }
             IconButton(onClick = onDelete) {
                 Icon(
                     painter = painterResource(R.drawable.ic_action_delete),
                     contentDescription = stringResource(R.string.drafts_delete),
-                    tint = MaterialTheme.colorScheme.iconCommand,
+                    tint = MaterialTheme.colorScheme.iconDelete,
                 )
             }
         }

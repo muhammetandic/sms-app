@@ -59,9 +59,13 @@ import com.anttech.smsapp.ui.components.ConfirmDeleteConversations
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
 import com.anttech.smsapp.ui.theme.OnAvatarColor
 import com.anttech.smsapp.ui.theme.avatarColorFor
-import com.anttech.smsapp.ui.theme.iconCommand
-import com.anttech.smsapp.ui.theme.iconIndicator
-import com.anttech.smsapp.ui.theme.iconSelected
+import com.anttech.smsapp.ui.theme.iconDelete
+import com.anttech.smsapp.ui.theme.iconDrafts
+import com.anttech.smsapp.ui.theme.iconMute
+import com.anttech.smsapp.ui.theme.iconNeutral
+import com.anttech.smsapp.ui.theme.iconPin
+import com.anttech.smsapp.ui.theme.iconSpam
+import com.anttech.smsapp.ui.theme.iconUnread
 
 @Composable
 fun ConversationsRoute(
@@ -170,7 +174,7 @@ fun ConversationsScreen(
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = closeSelectionLabel,
-                                tint = MaterialTheme.colorScheme.iconSelected,
+                                tint = MaterialTheme.colorScheme.iconNeutral,
                             )
                         }
                     }
@@ -187,7 +191,7 @@ fun ConversationsScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_spam),
                                 contentDescription = moveToSpamLabel,
-                                tint = MaterialTheme.colorScheme.iconSelected,
+                                tint = MaterialTheme.colorScheme.iconSpam,
                             )
                         }
                         IconButton(onClick = {
@@ -197,7 +201,7 @@ fun ConversationsScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_pin),
                                 contentDescription = if (allPinned) unpinLabel else pinLabel,
-                                tint = MaterialTheme.colorScheme.iconSelected,
+                                tint = MaterialTheme.colorScheme.iconPin,
                             )
                         }
                         IconButton(onClick = {
@@ -207,14 +211,14 @@ fun ConversationsScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_unread),
                                 contentDescription = markUnreadLabel,
-                                tint = MaterialTheme.colorScheme.iconSelected,
+                                tint = MaterialTheme.colorScheme.iconUnread,
                             )
                         }
                         IconButton(onClick = { pendingDelete = selectedIds }) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_delete),
                                 contentDescription = deleteLabel,
-                                tint = MaterialTheme.colorScheme.iconSelected,
+                                tint = MaterialTheme.colorScheme.iconDelete,
                             )
                         }
                     } else {
@@ -222,28 +226,28 @@ fun ConversationsScreen(
                             Icon(
                                 imageVector = Icons.Filled.Search,
                                 contentDescription = stringResource(R.string.search_title),
-                                tint = MaterialTheme.colorScheme.iconCommand,
+                                tint = MaterialTheme.colorScheme.iconNeutral,
                             )
                         }
                         IconButton(onClick = onOpenSpam) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_spam),
                                 contentDescription = stringResource(R.string.spam_open),
-                                tint = MaterialTheme.colorScheme.iconCommand,
+                                tint = MaterialTheme.colorScheme.iconSpam,
                             )
                         }
                         IconButton(onClick = onOpenDrafts) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_unread),
                                 contentDescription = stringResource(R.string.drafts_open),
-                                tint = MaterialTheme.colorScheme.iconCommand,
+                                tint = MaterialTheme.colorScheme.iconDrafts,
                             )
                         }
                         IconButton(onClick = onOpenSettings) {
                             Icon(
                                 imageVector = Icons.Filled.Settings,
                                 contentDescription = stringResource(R.string.settings_open),
-                                tint = MaterialTheme.colorScheme.iconCommand,
+                                tint = MaterialTheme.colorScheme.iconNeutral,
                             )
                         }
                     }
@@ -451,7 +455,7 @@ internal fun ConversationItem(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_pin),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.iconIndicator,
+                                tint = MaterialTheme.colorScheme.iconPin,
                                 modifier = Modifier.size(14.dp),
                             )
                         }
@@ -462,7 +466,7 @@ internal fun ConversationItem(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_mute),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.iconIndicator,
+                                tint = MaterialTheme.colorScheme.iconMute,
                                 modifier = Modifier.size(14.dp),
                             )
                         }
