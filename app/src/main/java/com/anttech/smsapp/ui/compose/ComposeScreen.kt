@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
 import com.anttech.smsapp.sms.send.SendValidator
+import com.anttech.smsapp.sms.send.SmsSegments
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
 import com.anttech.smsapp.ui.theme.iconNeutral
 
@@ -255,6 +256,32 @@ fun ComposeScreen(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // Segment counter: show when there is text, so the user knows
+                // how full the current part is and how many parts will be sent.
+                if (state.draft.isNotEmpty()) {
+                    val estimate = SmsSegments.estimate(state.draft)
+                    val counter = if (estimate.segments > 1) {
+                        pluralStringResource(
+                            R.plurals.thread_segment_parts,
+                            estimate.segments,
+                            estimate.usedInCurrentSegment,
+                            estimate.segmentLimit,
+                            estimate.segments,
+                        )
+                    } else {
+                        stringResource(
+                            R.string.thread_segment_counter,
+                            estimate.usedInCurrentSegment,
+                            estimate.segmentLimit,
+                        )
+                    }
+                    Text(
+                        text = counter,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(end = 8.dp),
+                    )
+                }
                 Spacer(modifier = Modifier.weight(1f))
                 val sendLabel = stringResource(R.string.thread_send)
                 Button(

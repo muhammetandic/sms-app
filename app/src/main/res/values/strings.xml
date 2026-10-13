@@ -21,6 +21,9 @@
 
     <string name="thread_empty">No messages in this conversation</string>
     <string name="thread_back">Back</string>
+    <!-- Date separator labels used in the thread and conversation list. -->
+    <string name="date_today">Today</string>
+    <string name="date_yesterday">Yesterday</string>
     <string name="thread_draft_hint">Message</string>
     <string name="thread_send">Send message</string>
     <string name="thread_composer_description">Message text</string>

@@ -19,6 +19,9 @@
 
     <string name="thread_empty">Bu sohbette mesaj yok</string>
     <string name="thread_back">Geri</string>
+    <!-- Tarih ayıracı etiketleri: mesaj listesi ve sohbet listesinde kullanılır. -->
+    <string name="date_today">Bugün</string>
+    <string name="date_yesterday">Dün</string>
     <string name="thread_draft_hint">Mesaj</string>
     <string name="thread_send">Mesaj gönder</string>
     <string name="thread_composer_description">Mesaj metni</string>

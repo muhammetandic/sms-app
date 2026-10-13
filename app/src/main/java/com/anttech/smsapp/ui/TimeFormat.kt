@@ -18,14 +18,19 @@ object TimeFormat {
     private val dayAndYear: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy")
 
     /** Short label for a conversation row: time today, otherwise a date. */
-    fun conversationTimestamp(timestampMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
+    fun conversationTimestamp(
+        timestampMillis: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+        todayLabel: String? = null,
+        yesterdayLabel: String = "Yesterday",
+    ): String {
         val zone = ZoneId.systemDefault()
         val moment = Instant.ofEpochMilli(timestampMillis).atZone(zone)
         val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
 
         return when (moment.toLocalDate()) {
-            today -> timeOfDay.format(moment)
-            today.minusDays(1) -> "Yesterday"
+            today -> todayLabel ?: timeOfDay.format(moment)
+            today.minusDays(1) -> yesterdayLabel
             else -> if (moment.year == today.year) {
                 dayAndMonth.format(moment)
             } else {
@@ -48,19 +53,25 @@ object TimeFormat {
     }
 
     /**
-     * Groups a thread for the conversation list, newest first.
+     * Label for a date separator row in a thread or conversation list.
      *
-     * Conversation rows show a date separator rather than a full date so the
-     * grouping matches what the user sees.
+     * [todayLabel] and [yesterdayLabel] come from string resources in the caller
+     * so the strings are localised. The default values keep plain-JVM tests
+     * working without a resource context.
      */
-    fun dateSeparator(timestampMillis: Long, nowMillis: Long = System.currentTimeMillis()): String? {
+    fun dateSeparator(
+        timestampMillis: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+        todayLabel: String = "Today",
+        yesterdayLabel: String = "Yesterday",
+    ): String {
         val zone = ZoneId.systemDefault()
         val date = Instant.ofEpochMilli(timestampMillis).atZone(zone).toLocalDate()
         val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
 
         return when {
-            date == today -> "Today"
-            date == today.minusDays(1) -> "Yesterday"
+            date == today -> todayLabel
+            date == today.minusDays(1) -> yesterdayLabel
             date.year == today.year -> dayAndMonth.format(date)
             else -> dayAndYear.format(date)
         }

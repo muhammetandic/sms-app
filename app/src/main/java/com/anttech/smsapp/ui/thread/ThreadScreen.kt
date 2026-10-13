@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -411,6 +412,9 @@ private fun MessageList(
         }
     }
 
+    val todayLabel = stringResource(R.string.date_today)
+    val yesterdayLabel = stringResource(R.string.date_yesterday)
+
     LazyColumn(
         state = listState,
         modifier = Modifier
@@ -423,11 +427,59 @@ private fun MessageList(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        items(messages, key = { it.id }) { bubble ->
-            MessageBubbleRow(
-                bubble = bubble,
-                onLongPress = { onLongPress(bubble) },
-                onMessageNumber = onMessageNumber,
+        // Group messages by day. A sticky header floats at the top of the
+        // visible area as the user scrolls through the day's messages, then
+        // slides away when the next group's header reaches it — the standard
+        // SMS UX for temporal orientation.
+        var previousSentAt: Long? = null
+        messages.forEach { bubble ->
+            val needsSeparator = previousSentAt == null ||
+                !TimeFormat.isSameDay(previousSentAt!!, bubble.sentAt)
+            if (needsSeparator) {
+                val label = TimeFormat.dateSeparator(
+                    timestampMillis = bubble.sentAt,
+                    todayLabel = todayLabel,
+                    yesterdayLabel = yesterdayLabel,
+                )
+                stickyHeader(key = "sep_${bubble.sentAt}") {
+                    DateSeparator(label = label)
+                }
+            }
+            previousSentAt = bubble.sentAt
+            item(key = bubble.id) {
+                MessageBubbleRow(
+                    bubble = bubble,
+                    onLongPress = { onLongPress(bubble) },
+                    onMessageNumber = onMessageNumber,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Sticky day header separating groups of messages in the thread.
+ *
+ * Floats at the top of the visible area as the user scrolls through a day's
+ * messages, giving temporal context without cluttering individual bubbles.
+ */
+@Composable
+private fun DateSeparator(label: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = MaterialTheme.shapes.small,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             )
         }
     }

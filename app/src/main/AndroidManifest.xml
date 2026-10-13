@@ -29,6 +29,39 @@
         android:name="android.hardware.telephony"
         android:required="false" />
 
+    <!--
+      API 30+ package visibility: the app fires implicit ACTION_VIEW intents for
+      links inside message bodies. Without declaring the URI schemes here the
+      platform blocks the query and openUri() silently finds no handler, so taps
+      on phone numbers, web links, map coordinates and email addresses do nothing.
+    -->
+    <queries>
+        <!-- tel: links → dialer -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="tel" />
+        </intent>
+        <!-- http / https links → browser -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <!-- geo: links → maps -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <!-- mailto: links → email -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="mailto" />
+        </intent>
+    </queries>
+
     <application
         android:name=".SmsApp"
         android:allowBackup="false"

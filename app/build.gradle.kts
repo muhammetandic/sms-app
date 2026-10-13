@@ -51,7 +51,15 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.findByName("release")
+            signingConfig = signingConfigs.findByName("release").also {
+                // Warn rather than silently produce an unsigned APK. The signing config
+                // is intentionally absent in CI/dev builds, but the message makes it
+                // obvious when credentials were accidentally omitted from a real release.
+                if (it == null) logger.warn(
+                    "WARNING: Release signing config not found. " +
+                    "Pass -PSMS_STORE_FILE=... to sign the release APK."
+                )
+            }
         }
     }
 
