@@ -86,7 +86,7 @@ class ConversationsViewModelTest {
     fun `losing the sms role switches the ui to read only`() = runTest(mainDispatcherRule.testDispatcher) {
         givenInbound("+15550000001", "hello", 1_000L)
         var roleHeld = true
-        val viewModel = ConversationsViewModel(repository, { roleHeld })
+        val viewModel = ConversationsViewModel(repository, { roleHeld }, dispatcher = mainDispatcherRule.testDispatcher)
 
         assertFalse(viewModel.uiState.first { !it.isLoading }.isReadOnly)
 
@@ -101,7 +101,7 @@ class ConversationsViewModelTest {
     @Test
     fun `holding the sms role keeps the ui writable`() = runTest(mainDispatcherRule.testDispatcher) {
         givenInbound("+15550000001", "hello", 1_000L)
-        val viewModel = ConversationsViewModel(repository, { true })
+        val viewModel = ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher)
 
         val state = viewModel.uiState.first { !it.isLoading }
 
@@ -115,13 +115,13 @@ class ConversationsViewModelTest {
             // Read before any collector starts the upstream: this is what the
             // first composition renders, so a held role must not look lost while
             // the conversations query is still warming up.
-            assertFalse(ConversationsViewModel(repository, { true }).uiState.value.isReadOnly)
-            assertTrue(ConversationsViewModel(repository, { false }).uiState.value.isReadOnly)
+            assertFalse(ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher).uiState.value.isReadOnly)
+            assertTrue(ConversationsViewModel(repository, { false }, dispatcher = mainDispatcherRule.testDispatcher).uiState.value.isReadOnly)
         }
 
     @Test
     fun `a new inbound message appears without any manual refresh`() = runTest(mainDispatcherRule.testDispatcher) {
-        val viewModel = ConversationsViewModel(repository, { true })
+        val viewModel = ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher)
         assertTrue(viewModel.uiState.first { !it.isLoading }.conversations.isEmpty())
 
         givenInbound("+15550000001", "new arrival", 5_000L)
@@ -134,7 +134,7 @@ class ConversationsViewModelTest {
     fun `a row falls back to the address key when no display name is stored`() = runTest(mainDispatcherRule.testDispatcher) {
         givenInbound("+15550000001", "hello", 1_000L)
 
-        val row = ConversationsViewModel(repository, { true })
+        val row = ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher)
             .uiState.first { !it.isLoading }
             .conversations
             .single()
@@ -148,7 +148,7 @@ class ConversationsViewModelTest {
     fun `deleting a conversation removes it from the inbox`() = runTest(mainDispatcherRule.testDispatcher) {
         givenInbound("+15550000001", "hello", 1_000L)
         givenInbound("+15550000002", "bye", 2_000L)
-        val viewModel = ConversationsViewModel(repository, { true })
+        val viewModel = ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher)
         val conversationId = viewModel.uiState.first { !it.isLoading }.conversations.last().id
 
         viewModel.deleteConversation(conversationId)
@@ -161,7 +161,7 @@ class ConversationsViewModelTest {
     fun `pinning rows keeps them first and marks them pinned`() = runTest(mainDispatcherRule.testDispatcher) {
         givenInbound("+15550000001", "old", 1_000L)
         givenInbound("+15550000002", "new", 9_000L)
-        val viewModel = ConversationsViewModel(repository, { true })
+        val viewModel = ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher)
         val olderId = viewModel.uiState.first { !it.isLoading }.conversations.last().id
 
         viewModel.setConversationsPinned(setOf(olderId), isPinned = true)
@@ -174,7 +174,7 @@ class ConversationsViewModelTest {
     fun `moving conversations to spam removes them from the inbox`() = runTest(mainDispatcherRule.testDispatcher) {
         givenInbound("+15550000001", "one", 1_000L)
         givenInbound("+15550000002", "two", 2_000L)
-        val viewModel = ConversationsViewModel(repository, { true })
+        val viewModel = ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher)
         val ids = viewModel.uiState.first { !it.isLoading }.conversations.map { it.id }
 
         viewModel.moveToSpam(ids.toSet())
@@ -185,7 +185,7 @@ class ConversationsViewModelTest {
     @Test
     fun `marking read rows unread restores their unread badge`() = runTest(mainDispatcherRule.testDispatcher) {
         givenInbound("+15550000001", "hello", 1_000L)
-        val viewModel = ConversationsViewModel(repository, { true })
+        val viewModel = ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher)
         val row = viewModel.uiState.first { !it.isLoading }.conversations.single()
         repository.markConversationRead(row.id)
         viewModel.uiState.first { it.conversations.single().unreadCount == 0 }
@@ -201,7 +201,7 @@ class ConversationsViewModelTest {
     fun `marking an unread row unread keeps its existing count`() = runTest(mainDispatcherRule.testDispatcher) {
         givenInbound("+15550000001", "first", 1_000L)
         givenInbound("+15550000001", "second", 2_000L)
-        val viewModel = ConversationsViewModel(repository, { true })
+        val viewModel = ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher)
         val row = viewModel.uiState.first { !it.isLoading }.conversations.single()
 
         viewModel.markConversationsUnread(setOf(row.id))
@@ -218,7 +218,7 @@ class ConversationsViewModelTest {
         givenInbound("+15550000001", "one", 1_000L)
         givenInbound("+15550000002", "two", 2_000L)
         givenInbound("+15550000003", "three", 3_000L)
-        val viewModel = ConversationsViewModel(repository, { true })
+        val viewModel = ConversationsViewModel(repository, { true }, dispatcher = mainDispatcherRule.testDispatcher)
         val ids = viewModel.uiState.first { !it.isLoading }.conversations.map { it.id }
 
         viewModel.deleteConversations(ids.drop(1).toSet())

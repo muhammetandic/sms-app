@@ -8,11 +8,14 @@ import com.anttech.smsapp.data.MessageRepository
 import com.anttech.smsapp.data.local.DraftConversationSummary
 import com.anttech.smsapp.ui.TimeFormat
 import com.anttech.smsapp.ui.conversations.ConversationRow
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -24,6 +27,7 @@ data class DraftsUiState(
 class DraftsViewModel(
     private val repository: MessageRepository,
     private val contactNames: ContactNameResolver? = null,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     private val resolvedNames = MutableStateFlow<Map<String, String?>>(emptyMap())
@@ -36,7 +40,9 @@ class DraftsViewModel(
             conversations = drafts.map { it.toRow(names[it.addressKey]) },
             isLoading = false,
         )
-    }.stateIn(
+        // Row building formats a timestamp per draft; keep it off the main thread
+        // so the folder does not stutter the frame that shows it.
+    }.flowOn(dispatcher).stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5_000L),
         DraftsUiState(),

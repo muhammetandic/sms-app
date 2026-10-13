@@ -7,11 +7,14 @@ import com.anttech.smsapp.contacts.ContactNameResolver
 import com.anttech.smsapp.data.MessageRepository
 import com.anttech.smsapp.data.local.ConversationSummary
 import com.anttech.smsapp.ui.TimeFormat
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -49,6 +52,7 @@ class ConversationsViewModel(
     private val repository: MessageRepository,
     private val isSmsRoleHeld: () -> Boolean,
     private val contactNames: ContactNameResolver? = null,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     /**
@@ -72,7 +76,10 @@ class ConversationsViewModel(
             isLoading = false,
             isReadOnly = !roleIsHeld,
         )
-    }.stateIn(
+        // Rows are rebuilt (and timestamps formatted) for the whole list on every
+        // store emission; viewModelScope would run that on the main thread. The
+        // mapping is pure, so it belongs on a background dispatcher.
+    }.flowOn(dispatcher).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
         // The role is already known synchronously, so seed the first frame with

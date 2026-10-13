@@ -72,6 +72,7 @@ class ThreadViewModelTest {
         recipient = threadRecipient,
         isSmsRoleHeld = roleHeld,
         send = send,
+        dispatcher = mainDispatcherRule.testDispatcher,
     )
 
     private suspend fun ThreadViewModel.awaitLoaded() = uiState.first { it.messages.isNotEmpty() }

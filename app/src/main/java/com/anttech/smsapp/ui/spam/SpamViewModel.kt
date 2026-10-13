@@ -8,11 +8,14 @@ import com.anttech.smsapp.data.MessageRepository
 import com.anttech.smsapp.data.local.ConversationSummary
 import com.anttech.smsapp.ui.TimeFormat
 import com.anttech.smsapp.ui.conversations.ConversationRow
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -31,6 +34,7 @@ data class SpamUiState(
 class SpamViewModel(
     private val repository: MessageRepository,
     private val contactNames: ContactNameResolver? = null,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     private val resolvedNames = MutableStateFlow<Map<String, String?>>(emptyMap())
@@ -43,7 +47,9 @@ class SpamViewModel(
             conversations = summaries.map { summary -> summary.toSpamRow(names[summary.addressKey]) },
             isLoading = false,
         )
-    }.stateIn(
+        // Row building formats a timestamp per conversation; keep it off the main
+        // thread so a long spam folder does not stutter the frame that shows it.
+    }.flowOn(dispatcher).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
         initialValue = SpamUiState(),

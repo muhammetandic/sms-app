@@ -13,11 +13,14 @@ import com.anttech.smsapp.sms.send.SendOutcome
 import com.anttech.smsapp.sms.send.SendState
 import com.anttech.smsapp.ui.TimeFormat
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -56,6 +59,7 @@ class ThreadViewModel(
     private val recipient: String,
     private val isSmsRoleHeld: () -> Boolean,
     private val send: suspend (recipient: String, body: String) -> SendOutcome,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     private val roleHeld = MutableStateFlow(isSmsRoleHeld())
@@ -90,7 +94,12 @@ class ThreadViewModel(
             canSend = roleIsHeld && recipient.isNotBlank(),
             isMuted = mutedConversation,
         )
-    }.stateIn(
+        // Every store emission rebuilds the whole thread's bubbles and formats
+        // each timestamp, and viewModelScope would do that on the main thread on
+        // the frame that draws it. A long thread pays that cost per message, so
+        // the mapping is pushed onto a background dispatcher; the screen only
+        // ever sees the finished state.
+    }.flowOn(dispatcher).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
         // Seed the first frame from the role read at construction instead of the

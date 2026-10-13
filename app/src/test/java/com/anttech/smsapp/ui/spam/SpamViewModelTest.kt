@@ -56,7 +56,7 @@ class SpamViewModelTest {
     @Test
     fun `deleting a conversation removes it from the spam folder`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenSpamConversation("+15550000001", "spam", 1_000L)
-        val viewModel = SpamViewModel(repository)
+        val viewModel = SpamViewModel(repository, dispatcher = mainDispatcherRule.testDispatcher)
         viewModel.resolveContactNames()
 
         viewModel.deleteConversation(conversationId)
@@ -67,7 +67,7 @@ class SpamViewModelTest {
     @Test
     fun `restoring is a move back to the inbox, not a delete`() = runTest(mainDispatcherRule.testDispatcher) {
         givenSpamConversation("+15550000001", "spam", 1_000L)
-        val viewModel = SpamViewModel(repository)
+        val viewModel = SpamViewModel(repository, dispatcher = mainDispatcherRule.testDispatcher)
         val row = viewModel.uiState.first { it.conversations.isNotEmpty() }.conversations.single()
 
         viewModel.restore(row.id)
@@ -80,7 +80,7 @@ class SpamViewModelTest {
     fun `restoring a selection moves all of them back to the inbox`() = runTest(mainDispatcherRule.testDispatcher) {
         givenSpamConversation("+15550000001", "a", 1_000L)
         givenSpamConversation("+15550000002", "b", 2_000L)
-        val viewModel = SpamViewModel(repository)
+        val viewModel = SpamViewModel(repository, dispatcher = mainDispatcherRule.testDispatcher)
         val ids = viewModel.uiState.first { it.conversations.size == 2 }.conversations.map { it.id }
 
         viewModel.restore(ids.toSet())
@@ -93,7 +93,7 @@ class SpamViewModelTest {
     fun `deleting a selection clears the spam folder`() = runTest(mainDispatcherRule.testDispatcher) {
         givenSpamConversation("+15550000001", "a", 1_000L)
         givenSpamConversation("+15550000002", "b", 2_000L)
-        val viewModel = SpamViewModel(repository)
+        val viewModel = SpamViewModel(repository, dispatcher = mainDispatcherRule.testDispatcher)
         viewModel.resolveContactNames()
         val ids = viewModel.uiState.first { it.conversations.size == 2 }.conversations.map { it.id }
 
