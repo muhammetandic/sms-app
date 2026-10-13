@@ -41,7 +41,6 @@ class SmsSendCoordinatorTest {
             database.messageDao(),
             database.draftDao(),
             writer,
-            database = database,
         )
         DataGraph.overrideForTest(context, repository)
     }

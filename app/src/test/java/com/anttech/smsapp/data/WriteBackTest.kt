@@ -27,6 +27,7 @@ class WriteBackTest {
     private lateinit var database: SmsDatabase
     private lateinit var writer: RecordingTelephonyMessageWriter
     private lateinit var repository: MessageRepository
+    private lateinit var importRepository: ProviderImportRepository
 
     @Before
     fun setUp() {
@@ -40,7 +41,11 @@ class WriteBackTest {
             database.messageDao(),
             database.draftDao(),
             writer,
-            database = database,
+        )
+        importRepository = ProviderImportRepository(
+            database.conversationDao(),
+            database.messageDao(),
+            database,
         )
     }
 
@@ -68,7 +73,7 @@ class WriteBackTest {
     @Test
     fun `deleting an imported message mirrors the provider delete`() = runTest {
         // Imported history carries the provider row's own id.
-        repository.importFromProvider(listOf(providerMessage(id = 7L)))
+        importRepository.importFromProvider(listOf(providerMessage(id = 7L)))
         val messageId = repository.observeMessages(repository.observeConversations().first().single().id).first().single().id
 
         repository.deleteMessage(messageId)
@@ -90,7 +95,7 @@ class WriteBackTest {
 
     @Test
     fun `deleting a conversation mirrors every provider row it held`() = runTest {
-        repository.importFromProvider(
+        importRepository.importFromProvider(
             listOf(
                 providerMessage(id = 1L),
                 providerMessage(id = 2L, body = "second"),
@@ -108,7 +113,7 @@ class WriteBackTest {
 
     @Test
     fun `marking a conversation read mirrors the read state`() = runTest {
-        repository.importFromProvider(
+        importRepository.importFromProvider(
             listOf(
                 providerMessage(id = 1L),
                 providerMessage(id = 5L, address = "+15555555555"),
@@ -141,7 +146,7 @@ class WriteBackTest {
 
     @Test
     fun `marking conversations unread mirrors the read state back`() = runTest {
-        repository.importFromProvider(
+        importRepository.importFromProvider(
             listOf(
                 providerMessage(id = 1L),
                 providerMessage(id = 5L, address = "+15555555555"),
@@ -203,7 +208,7 @@ class WriteBackTest {
         // The row now answers to the key an import would derive for the same
         // provider row, so the next import recognises it instead of filing a
         // second copy of the same send.
-        val inserted = repository.importFromProvider(
+        val inserted = importRepository.importFromProvider(
             listOf(
                 providerMessage(
                     id = 100L,

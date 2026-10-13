@@ -2,6 +2,7 @@ package com.anttech.smsapp.data.telephony
 
 import androidx.test.core.app.ApplicationProvider
 import com.anttech.smsapp.data.MessageRepository
+import com.anttech.smsapp.data.ProviderImportRepository
 import com.anttech.smsapp.data.local.MessageDirection
 import com.anttech.smsapp.data.local.MessageStatus
 import com.anttech.smsapp.data.local.SmsDatabase
@@ -30,6 +31,7 @@ class ProviderImportTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    private lateinit var importRepository: ProviderImportRepository
 
     @Before
     fun setUp() {
@@ -41,7 +43,11 @@ class ProviderImportTest {
             database.conversationDao(),
             database.messageDao(),
             database.draftDao(),
-            database = database,
+        )
+        importRepository = ProviderImportRepository(
+            database.conversationDao(),
+            database.messageDao(),
+            database,
         )
     }
 
@@ -67,7 +73,7 @@ class ProviderImportTest {
 
     @Test
     fun `imported messages land in the local store`() = runTest(mainDispatcherRule.testDispatcher) {
-        val inserted = repository.importFromProvider(
+        val inserted = importRepository.importFromProvider(
             listOf(providerMessage(1L), providerMessage(2L, body = "another")),
         )
 
@@ -81,10 +87,10 @@ class ProviderImportTest {
     @Test
     fun `re-importing the same rows adds nothing`() = runTest(mainDispatcherRule.testDispatcher) {
         val messages = listOf(providerMessage(1L), providerMessage(2L, body = "another"))
-        assertEquals(2, repository.importFromProvider(messages))
+        assertEquals(2, importRepository.importFromProvider(messages))
 
         // Runs on every launch, so this must be a no-op rather than a duplicate.
-        assertEquals(0, repository.importFromProvider(messages))
+        assertEquals(0, importRepository.importFromProvider(messages))
         val conversation = repository.observeConversations().first().single()
         assertEquals(2, repository.observeMessages(conversation.id).first().size)
     }
@@ -105,7 +111,7 @@ class ProviderImportTest {
                 partCount = 1,
             )
 
-            val inserted = repository.importFromProvider(listOf(providerMessage(1L)))
+            val inserted = importRepository.importFromProvider(listOf(providerMessage(1L)))
 
             assertEquals(0, inserted)
             val conversationId = repository.conversationIdFor("+15551234567")!!
@@ -114,7 +120,7 @@ class ProviderImportTest {
 
     @Test
     fun `provider rows group into a conversation by address`() = runTest(mainDispatcherRule.testDispatcher) {
-        repository.importFromProvider(
+        importRepository.importFromProvider(
             listOf(
                 providerMessage(1L, body = "first", date = 1_000L),
                 providerMessage(2L, body = "second", date = 2_000L),
@@ -128,7 +134,7 @@ class ProviderImportTest {
 
     @Test
     fun `different senders become separate conversations`() = runTest(mainDispatcherRule.testDispatcher) {
-        repository.importFromProvider(
+        importRepository.importFromProvider(
             listOf(
                 providerMessage(1L, address = "+15551234567"),
                 providerMessage(2L, address = "+15557654321", date = 2_000L),
@@ -140,7 +146,7 @@ class ProviderImportTest {
 
     @Test
     fun `an incoming row is stored as delivered`() = runTest(mainDispatcherRule.testDispatcher) {
-        repository.importFromProvider(listOf(providerMessage(1L)))
+        importRepository.importFromProvider(listOf(providerMessage(1L)))
 
         val conversationId = repository.conversationIdFor("+15551234567")!!
         val message = repository.observeMessages(conversationId).first().single()
@@ -152,7 +158,7 @@ class ProviderImportTest {
 
     @Test
     fun `a sent row is stored as outgoing`() = runTest(mainDispatcherRule.testDispatcher) {
-        repository.importFromProvider(
+        importRepository.importFromProvider(
             listOf(providerMessage(1L, type = SmsProviderTypes.MESSAGE_TYPE_SENT)),
         )
 
@@ -164,7 +170,7 @@ class ProviderImportTest {
 
     @Test
     fun `rows with no address are skipped`() = runTest(mainDispatcherRule.testDispatcher) {
-        val inserted = repository.importFromProvider(
+        val inserted = importRepository.importFromProvider(
             listOf(
                 providerMessage(1L),
                 providerMessage(2L, address = ""),
@@ -176,7 +182,7 @@ class ProviderImportTest {
 
     @Test
     fun `imported history does not mark anything unread`() = runTest(mainDispatcherRule.testDispatcher) {
-        repository.importFromProvider(listOf(providerMessage(1L), providerMessage(2L)))
+        importRepository.importFromProvider(listOf(providerMessage(1L), providerMessage(2L)))
 
         assertTrue(repository.observeConversations().first().all { it.unreadCount == 0 })
     }
@@ -184,7 +190,7 @@ class ProviderImportTest {
     @Test
     fun `the conversation keeps the timestamp of its most recent message`() =
         runTest(mainDispatcherRule.testDispatcher) {
-            repository.importFromProvider(
+            importRepository.importFromProvider(
                 listOf(
                     providerMessage(1L, date = 1_000L),
                     providerMessage(2L, date = 5_000L),
@@ -199,7 +205,7 @@ class ProviderImportTest {
     fun `import is skipped when the sms role is not held`() = runTest(mainDispatcherRule.testDispatcher) {
         val dataSource = FakeDataSource(listOf(providerMessage(1L)))
         val coordinator = ProviderImportCoordinator(
-            repository = repository,
+            repository = importRepository,
             dataSource = dataSource,
             hasSmsRole = { false },
         )
@@ -212,7 +218,7 @@ class ProviderImportTest {
     fun `import runs when the sms role is held`() = runTest(mainDispatcherRule.testDispatcher) {
         val dataSource = FakeDataSource(listOf(providerMessage(1L)))
         val coordinator = ProviderImportCoordinator(
-            repository = repository,
+            repository = importRepository,
             dataSource = dataSource,
             hasSmsRole = { true },
         )
@@ -226,7 +232,7 @@ class ProviderImportTest {
         runTest(mainDispatcherRule.testDispatcher) {
             val dataSource = FakeDataSource(listOf(providerMessage(1L), providerMessage(2L, body = "another")))
             val coordinator = ProviderImportCoordinator(
-                repository = repository,
+                repository = importRepository,
                 dataSource = dataSource,
                 hasSmsRole = { true },
             )
@@ -250,7 +256,7 @@ class ProviderImportTest {
                 listOf(providerMessage(1L), providerMessage(2L, address = "")),
             )
             val coordinator = ProviderImportCoordinator(
-                repository = repository,
+                repository = importRepository,
                 dataSource = dataSource,
                 hasSmsRole = { true },
             )
@@ -265,7 +271,7 @@ class ProviderImportTest {
         runTest(mainDispatcherRule.testDispatcher) {
             val dataSource = FakeDataSource(emptyList(), failWith = SecurityException("no role"))
             val coordinator = ProviderImportCoordinator(
-                repository = repository,
+                repository = importRepository,
                 dataSource = dataSource,
                 hasSmsRole = { true },
             )
@@ -277,7 +283,7 @@ class ProviderImportTest {
     fun `concurrent imports do not duplicate rows`() = runTest(mainDispatcherRule.testDispatcher) {
         val dataSource = FakeDataSource(listOf(providerMessage(1L), providerMessage(2L, body = "another")))
         val coordinator = ProviderImportCoordinator(
-            repository = repository,
+            repository = importRepository,
             dataSource = dataSource,
             hasSmsRole = { true },
         )

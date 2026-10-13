@@ -38,7 +38,6 @@ class MessageRepositoryTest {
             database.conversationDao(),
             database.messageDao(),
             database.draftDao(),
-            database = database,
         )
     }
 

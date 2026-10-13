@@ -50,7 +50,6 @@ class SpamRepositoryTest {
             database.conversationDao(),
             database.messageDao(),
             database.draftDao(),
-            database = database,
         )
     }
 

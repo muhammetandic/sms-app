@@ -33,7 +33,7 @@ class ConversationsViewModelTest {
             ApplicationProvider.getApplicationContext(),
             SmsDatabase::class.java,
         )
-        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao(), database = database)
+        repository = MessageRepository(database.conversationDao(), database.messageDao(), database.draftDao())
     }
 
     @After

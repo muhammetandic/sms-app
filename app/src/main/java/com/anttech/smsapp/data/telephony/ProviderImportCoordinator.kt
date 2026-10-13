@@ -1,7 +1,7 @@
 package com.anttech.smsapp.data.telephony
 
 import android.util.Log
-import com.anttech.smsapp.data.MessageRepository
+import com.anttech.smsapp.data.ProviderImportRepository
 import com.anttech.smsapp.sms.receive.LogTags
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -15,7 +15,7 @@ import kotlinx.coroutines.sync.withLock
  * the insert would otherwise run twice at once on startup.
  */
 class ProviderImportCoordinator(
-    private val repository: MessageRepository,
+    private val repository: ProviderImportRepository,
     private val dataSource: SmsMessageSource,
     private val hasSmsRole: () -> Boolean,
 ) {

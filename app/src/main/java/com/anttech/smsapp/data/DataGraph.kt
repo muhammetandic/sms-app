@@ -24,6 +24,16 @@ class DataGraph private constructor(
         messageDao = database.messageDao(),
         draftDao = database.draftDao(),
         telephonyWriter = PlatformTelephonyMessageWriter(context),
+    )
+
+    /**
+     * Backfills provider history into the local store, over the same database as
+     * [messageRepository]. Only the import path reads it, and a test that injects
+     * its own [MessageRepository] does not drive that path.
+     */
+    val providerImportRepository: ProviderImportRepository = ProviderImportRepository(
+        conversationDao = database.conversationDao(),
+        messageDao = database.messageDao(),
         database = database,
     )
 
@@ -45,7 +55,7 @@ class DataGraph private constructor(
      */
     val providerImport: ProviderImportCoordinator by lazy {
         ProviderImportCoordinator(
-            repository = messageRepository,
+            repository = providerImportRepository,
             dataSource = telephonyDataSource,
             hasSmsRole = { roleManager.isHeld() },
         )
