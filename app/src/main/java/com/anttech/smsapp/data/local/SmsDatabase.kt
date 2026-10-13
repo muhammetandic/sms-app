@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DraftEntity::class,
         ImportStateEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -412,6 +412,21 @@ abstract class SmsDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Adds the archive flag to conversations.
+         *
+         * Every existing row is unarchived, so the column defaults to 0 and an
+         * upgrade leaves the inbox exactly as it was. Archiving is a second
+         * hidden-but-kept state beside spam; the inbox query filters on both.
+         */
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE conversations ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0",
+                )
+            }
+        }
+
         @Volatile
         private var instance: SmsDatabase? = null
 
@@ -438,6 +453,7 @@ abstract class SmsDatabase : RoomDatabase() {
                     MIGRATION_13_14,
                     MIGRATION_14_15,
                     MIGRATION_15_16,
+                    MIGRATION_16_17,
                 )
                 .build()
     }

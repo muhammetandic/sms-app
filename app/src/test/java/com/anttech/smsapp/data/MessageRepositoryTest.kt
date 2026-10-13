@@ -198,6 +198,33 @@ class MessageRepositoryTest {
     }
 
     @Test
+    fun `marking several conversations read clears their unread counts`() = runTest {
+        repository.recordInbound(inbound(address = "+15551111111", timestamp = 1L), partCount = 1)
+        repository.recordInbound(inbound(address = "+15552222222", timestamp = 2L), partCount = 1)
+        val rows = conversations.observeConversations().first()
+
+        conversations.setConversationsRead(rows.map { it.id }.toSet())
+
+        assertTrue(
+            "each selected conversation is read, not just the first",
+            conversations.observeConversations().first().all { it.unreadCount == 0 },
+        )
+    }
+
+    @Test
+    fun `marking all conversations read clears every unread count`() = runTest {
+        repository.recordInbound(inbound(address = "+15551111111", timestamp = 1L), partCount = 1)
+        repository.recordInbound(inbound(address = "+15552222222", timestamp = 2L), partCount = 1)
+
+        conversations.markAllConversationsRead()
+
+        assertTrue(
+            "every conversation is read, not just the selected ones",
+            conversations.observeConversations().first().all { it.unreadCount == 0 },
+        )
+    }
+
+    @Test
     fun `outgoing message is stored as sending`() = runTest {
         val id = repository.recordOutgoing("+15551234567", "reply", 1_700_000_000_000L)
 

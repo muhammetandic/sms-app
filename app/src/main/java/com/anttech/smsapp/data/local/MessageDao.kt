@@ -40,6 +40,10 @@ interface MessageDao {
     @Query("SELECT provider_id FROM messages WHERE conversation_id IN (:ids) AND provider_id IS NOT NULL")
     suspend fun providerIdsInConversations(ids: List<Long>): List<Long>
 
+    /** Every provider row this app wrote, for a store-wide mark-all-read. */
+    @Query("SELECT provider_id FROM messages WHERE provider_id IS NOT NULL")
+    suspend fun allProviderIds(): List<Long>
+
     @Query("SELECT COUNT(*) FROM messages WHERE dedupe_key = :dedupeKey")
     suspend fun countByDedupeKey(dedupeKey: String): Int
 

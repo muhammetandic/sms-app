@@ -1,5 +1,8 @@
 package com.anttech.smsapp.notify
 
+import android.app.NotificationManager
+import android.content.Context
+
 /**
  * Notification ids for the per-conversation alerts.
  *
@@ -39,4 +42,18 @@ object NotificationIds {
         val id = conversationId ?: return 0
         return if (id <= 0x1FFFFFL) id.toInt() else (id.hashCode() and 0x1FFFFF)
     }
+}
+
+/**
+ * Dismisses a conversation's alert, if one is showing.
+ *
+ * Called whenever a conversation becomes read - opening a thread, a batch
+ * mark-read, or the notification's own Read action - because the store is
+ * the source of truth and an alert left on screen would contradict it.
+ * Cancelling an id with no notification is a no-op, so a read path never
+ * has to check first.
+ */
+fun cancelConversationNotification(context: Context, conversationId: Long) {
+    context.getSystemService(NotificationManager::class.java)
+        ?.cancel(NotificationIds.forConversation(conversationId))
 }

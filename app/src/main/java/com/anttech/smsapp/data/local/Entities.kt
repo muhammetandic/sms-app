@@ -56,6 +56,14 @@ data class ConversationEntity(
      */
     @ColumnInfo(name = "is_muted")
     val isMuted: Boolean = false,
+
+    /**
+     * Archived by the user. Like spam it is hidden from the inbox and kept in
+     * the store rather than deleted; unlike spam it is ordinary mail, so an
+     * arriving message returns it to the inbox instead of staying quiet.
+     */
+    @ColumnInfo(name = "is_archived")
+    val isArchived: Boolean = false,
 )
 
 @Entity(

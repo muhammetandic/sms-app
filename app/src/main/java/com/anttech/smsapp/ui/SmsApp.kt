@@ -32,11 +32,14 @@ import com.anttech.smsapp.data.DataGraph
 import com.anttech.smsapp.permission.PermissionSetup
 import com.anttech.smsapp.permission.SmsPermissions
 import com.anttech.smsapp.sms.send.SendGraph
+import com.anttech.smsapp.ui.archive.ArchiveRoute
+import com.anttech.smsapp.ui.archive.ArchiveViewModel
 import com.anttech.smsapp.ui.compose.ComposeIntentParser
 import com.anttech.smsapp.ui.compose.ComposeRoute
 import com.anttech.smsapp.ui.compose.ComposeViewModel
 import com.anttech.smsapp.ui.conversations.ConversationsRoute
 import com.anttech.smsapp.ui.conversations.ConversationsViewModel
+import com.anttech.smsapp.notify.cancelConversationNotification
 import com.anttech.smsapp.ui.drafts.DraftsRoute
 import com.anttech.smsapp.ui.drafts.DraftsViewModel
 import com.anttech.smsapp.ui.permission.PermissionGate
@@ -54,6 +57,7 @@ private object Routes {
     const val CONVERSATIONS = "conversations"
     const val SPAM = "spam"
     const val DRAFTS = "drafts"
+    const val ARCHIVE = "archive"
     const val THREAD = "thread/{conversationId}?recipient={recipient}"
     const val COMPOSE = "compose"
     const val SEARCH = "search"
@@ -243,7 +247,15 @@ private fun SmsNavHost(
     NavHost(navController = navController, startDestination = Routes.CONVERSATIONS) {
         composable(Routes.CONVERSATIONS) {
             val viewModel: ConversationsViewModel = viewModel(
-                factory = ConversationsViewModel.factory(conversationRepository, isSmsRoleHeld, contactNames),
+                factory = ConversationsViewModel.factory(
+                    conversationRepository,
+                    isSmsRoleHeld,
+                    contactNames,
+                    // Reading a conversation - from the list or in the thread - is
+                    // the moment its alert has served its purpose, so the batch
+                    // actions dismiss the notifications along with the badges.
+                    cancelNotification = { ids -> ids.forEach { cancelConversationNotification(context, it) } },
+                ),
             )
             ConversationsRoute(
                 viewModel = viewModel,
@@ -255,6 +267,7 @@ private fun SmsNavHost(
                 onResume = viewModel::resolveContactNames,
                 onOpenSpam = { navController.navigate(Routes.SPAM) },
                 onOpenDrafts = { navController.navigate(Routes.DRAFTS) },
+                onOpenArchive = { navController.navigate(Routes.ARCHIVE) },
                 onOpenSearch = { navController.navigate(Routes.SEARCH) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 // Reached from the app's own floating action button, so unlike the
@@ -388,6 +401,24 @@ private fun SmsNavHost(
             )
         }
 
+        // The archive. Reads the same conversations as the inbox through a
+        // different query, so archiving and restoring are one flag change
+        // and neither list can hold a row the other still claims. Unlike
+        // spam an archived conversation is ordinary mail: a new message
+        // returns it to the inbox on its own.
+        composable(Routes.ARCHIVE) {
+            val viewModel: ArchiveViewModel = viewModel(
+                factory = ArchiveViewModel.factory(conversationRepository, contactNames),
+            )
+            ArchiveRoute(
+                viewModel = viewModel,
+                onOpenConversation = { row ->
+                    navController.navigate(Routes.thread(row.id, row.address))
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
         composable(Routes.DRAFTS) {
             val viewModel: DraftsViewModel = viewModel(
                 factory = DraftsViewModel.factory(repository, contactNames),
@@ -462,6 +493,9 @@ private fun SmsNavHost(
                     send = { address, body ->
                         SendGraph.coordinator(context).send(address, body)
                     },
+                    // Opening the thread is reading the message, so the alert
+                    // goes away with the badge rather than contradicting the app.
+                    cancelNotification = { cancelConversationNotification(context, conversationId) },
                 ),
             )
 

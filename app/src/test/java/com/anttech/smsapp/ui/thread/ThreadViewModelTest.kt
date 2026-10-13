@@ -69,6 +69,7 @@ class ThreadViewModelTest {
             SendOutcome(SendState.SENT, 0, 1, ResultCode.SENT)
         },
         threadRecipient: String = recipient,
+        cancelNotification: () -> Unit = {},
     ) = ThreadViewModel(
         repository = repository,
         conversationRepository = conversations,
@@ -76,6 +77,7 @@ class ThreadViewModelTest {
         recipient = threadRecipient,
         isSmsRoleHeld = roleHeld,
         send = send,
+        cancelNotification = cancelNotification,
         dispatcher = mainDispatcherRule.testDispatcher,
     )
 
@@ -89,6 +91,16 @@ class ThreadViewModelTest {
         viewModel(conversationId).awaitLoaded()
 
         assertEquals(0, conversations.observeConversations().first().single().unreadCount)
+    }
+
+    @Test
+    fun `opening a thread dismisses its notification`() = runTest(mainDispatcherRule.testDispatcher) {
+        val conversationId = givenInbound("unread message", 1_000L)
+        var cancelled = 0
+
+        viewModel(conversationId, cancelNotification = { cancelled++ }).awaitLoaded()
+
+        assertEquals("reading the thread is the moment the alert goes away", 1, cancelled)
     }
 
     @Test

@@ -10,9 +10,9 @@ import androidx.compose.ui.graphics.Color
  * destructive action would all resolve to the same two or three accents, so the
  * eye gets no help telling "delete" from "pin". Each icon therefore keeps a hue
  * of its own -- red for the spam pile and for delete, amber for a pinned row,
- * purple for a silenced one, blue for drafts and for mark-unread, green for the
- * actions that put a message back or send one -- while navigation and plain
- * commands stay neutral grey.
+ * purple for a silenced one, blue for drafts and for mark-unread, teal for the
+ * archive folder, green for the actions that put a message back, mark it read
+ * or send one -- while navigation and plain commands stay neutral grey.
  *
  * The hues are fixed mid-tones rather than scheme roles for the same reason the
  * avatar colours are: the scheme is dynamic on Android 12+ and would paint
@@ -43,12 +43,17 @@ internal val ColorScheme.iconMute: Color get() = MutePurple
 internal val ColorScheme.iconDrafts: Color get() = FolderBlue
 internal val ColorScheme.iconUnread: Color get() = FolderBlue
 
-/** Put a message back in the inbox, or send one. */
+/** The archive folder. */
+internal val ColorScheme.iconArchive: Color get() = FolderTeal
+
+/** Put a message back in the inbox, mark a conversation read, or send one. */
 internal val ColorScheme.iconRestore: Color get() = ActionGreen
 internal val ColorScheme.iconSend: Color get() = ActionGreen
+internal val ColorScheme.iconRead: Color get() = ActionGreen
 
 private val FolderRed = Color(0xFFD32F2F)
 private val PinAmber = Color(0xFFB26A00)
 private val MutePurple = Color(0xFFAB47BC)
 private val FolderBlue = Color(0xFF1565C0)
+private val FolderTeal = Color(0xFF00796B)
 private val ActionGreen = Color(0xFF2E7D32)

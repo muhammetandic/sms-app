@@ -34,6 +34,7 @@ import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -46,6 +47,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -80,8 +82,10 @@ import com.anttech.smsapp.sms.send.SmsSegments
 import com.anttech.smsapp.ui.TimeFormat
 import com.anttech.smsapp.ui.components.LinkifiedText
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
+import com.anttech.smsapp.ui.theme.iconDelete
 import com.anttech.smsapp.ui.theme.iconMute
 import com.anttech.smsapp.ui.theme.iconNeutral
+import com.anttech.smsapp.ui.theme.iconSend
 import kotlinx.coroutines.launch
 
 class ThreadTestTags {
@@ -572,7 +576,9 @@ private fun MessageBubbleSheet(
         HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
         SheetAction(
-            icon = { painterResource(R.drawable.ic_action_copy) },
+            // Wrapped in Icon so the vector is drawn and tinted; a bare
+            // painterResource() only builds a Painter and renders nothing.
+            icon = { Icon(painterResource(R.drawable.ic_action_copy), contentDescription = null) },
             label = stringResource(R.string.message_action_copy),
             onClick = onCopy,
         )
@@ -584,12 +590,14 @@ private fun MessageBubbleSheet(
         SheetAction(
             icon = { Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null) },
             label = stringResource(R.string.message_action_forward),
+            iconColor = MaterialTheme.colorScheme.iconSend,
             onClick = onForward,
         )
         if (bubble.isOutgoing && bubble.status == MessageStatus.FAILED) {
             SheetAction(
                 icon = { Icon(Icons.Filled.Refresh, contentDescription = null) },
                 label = stringResource(R.string.message_action_resend),
+                iconColor = MaterialTheme.colorScheme.iconSend,
                 onClick = onResend,
             )
         }
@@ -597,6 +605,7 @@ private fun MessageBubbleSheet(
             icon = { Icon(Icons.Filled.Delete, contentDescription = null) },
             label = stringResource(R.string.dialog_delete),
             labelColor = MaterialTheme.colorScheme.error,
+            iconColor = MaterialTheme.colorScheme.iconDelete,
             onClick = onDelete,
         )
     }
@@ -627,6 +636,7 @@ private fun SheetAction(
     label: String,
     onClick: () -> Unit,
     labelColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+    iconColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.iconNeutral,
 ) {
     Row(
         modifier = Modifier
@@ -636,7 +646,10 @@ private fun SheetAction(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        icon()
+        // The slot draws an Icon with its default tint, which reads
+        // LocalContentColor; providing the hue here colours every action without
+        // each call site having to remember to set one.
+        CompositionLocalProvider(LocalContentColor provides iconColor) { icon() }
         Text(
             text = label,
             style = MaterialTheme.typography.bodyLarge,

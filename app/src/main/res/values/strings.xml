@@ -83,6 +83,10 @@
     <string name="spam_empty">No spam messages</string>
     <string name="spam_open">Open spam folder</string>
     <string name="spam_restore">Move out of spam</string>
+    <string name="archive_title">Archive</string>
+    <string name="archive_empty">No archived conversations</string>
+    <string name="archive_open">Open archive folder</string>
+    <string name="archive_restore">Move out of archive</string>
     <string name="drafts_title">Drafts</string>
     <string name="drafts_open">Open drafts</string>
     <string name="drafts_empty">No drafts</string>
@@ -90,6 +94,9 @@
     <string name="drafts_send">Send draft</string>
 
     <string name="selection_close">Close selection</string>
+    <!-- The content description of the ⋮ button that holds the
+         actions that do not fit as direct toolbar icons. -->
+    <string name="app_bar_overflow">More actions</string>
     <!-- The toolbar title while several conversations are selected. -->
     <plurals name="selection_count">
         <item quantity="one">%1$d selected</item>
@@ -99,7 +106,11 @@
     <string name="conversations_unpin">Remove from top</string>
     <string name="conversations_move_to_spam">Move to spam</string>
     <string name="conversations_move_to_inbox">Move to inbox</string>
+    <string name="conversations_move_to_archive">Move to archive</string>
+    <string name="conversations_archive">Archive</string>
     <string name="conversations_mark_unread">Mark unread</string>
+    <string name="conversations_mark_read">Mark read</string>
+    <string name="conversations_mark_all_read">Mark all read</string>
 
     <!-- Actions offered when a phone number is tapped inside a message. -->
     <string name="phone_action_message">Message</string>

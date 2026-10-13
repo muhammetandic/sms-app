@@ -52,6 +52,12 @@ class ConversationsViewModel(
     private val repository: ConversationRepository,
     private val isSmsRoleHeld: () -> Boolean,
     private val contactNames: ContactNameResolver? = null,
+    /**
+     * Dismisses the alerts for the given conversations. Injected rather than
+     * built from a Context so the ViewModel stays free of framework services
+     * and a test can observe the call.
+     */
+    private val cancelNotification: (Set<Long>) -> Unit = {},
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
@@ -138,6 +144,29 @@ class ConversationsViewModel(
         viewModelScope.launch { repository.setConversationsUnread(ids) }
     }
 
+    /** Clears the unread badge on several selected conversations. */
+    fun markConversationsRead(ids: Set<Long>) {
+        viewModelScope.launch {
+            repository.setConversationsRead(ids)
+            // Reading them is the moment their alerts have served their purpose,
+            // so they go away with the badge rather than contradicting the list.
+            cancelNotification(ids)
+        }
+    }
+
+    /** Clears the unread badge on every conversation at once. */
+    fun markAllConversationsRead() {
+        viewModelScope.launch {
+            repository.markAllConversationsRead()
+            cancelNotification(repository.conversationIds().toSet())
+        }
+    }
+
+    /** Hides the selected conversations in the archive folder. */
+    fun archiveConversations(ids: Set<Long>) {
+        viewModelScope.launch { repository.setConversationsArchived(ids, isArchived = true) }
+    }
+
     private fun ConversationSummary.toRow(resolvedName: String?) = ConversationRow(
         id = id,
         address = displayAddress.ifBlank { addressKey },
@@ -157,10 +186,11 @@ class ConversationsViewModel(
             repository: ConversationRepository,
             isSmsRoleHeld: () -> Boolean,
             contactNames: ContactNameResolver? = null,
+            cancelNotification: (Set<Long>) -> Unit = {},
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                ConversationsViewModel(repository, isSmsRoleHeld, contactNames) as T
+                ConversationsViewModel(repository, isSmsRoleHeld, contactNames, cancelNotification) as T
         }
     }
 }

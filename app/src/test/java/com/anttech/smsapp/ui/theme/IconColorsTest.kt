@@ -44,24 +44,26 @@ class IconColorsTest {
     /**
      * The point of the palette is that the icons look different. Spam and delete
      * deliberately share the destructive red, drafts and unread the blue, and
-     * restore and send the green; pin and mute each stand alone. So there should
-     * be five distinct hues, and neutral must not be one of them.
+     * restore, read and send the green; pin, mute and archive each stand alone.
+     * So there should be six distinct hues, and neutral must not be one of them.
      */
     @Test
     fun `the palette stays distinct`() {
         val scheme = PreviewLightColors
         assertEquals("spam and delete share red", scheme.iconSpam, scheme.iconDelete)
         assertEquals("drafts and unread share blue", scheme.iconDrafts, scheme.iconUnread)
-        assertEquals("restore and send share green", scheme.iconRestore, scheme.iconSend)
+        assertEquals("restore, read and send share green", scheme.iconRestore, scheme.iconSend)
+        assertEquals("read borrows the restore green", scheme.iconRestore, scheme.iconRead)
 
         val distinct = setOf(
             scheme.iconSpam,
             scheme.iconPin,
             scheme.iconMute,
             scheme.iconDrafts,
+            scheme.iconArchive,
             scheme.iconRestore,
         )
-        assertEquals("spam/pin/mute/drafts/restore must all differ", 5, distinct.size)
+        assertEquals("spam/pin/mute/drafts/archive/restore must all differ", 6, distinct.size)
         assertTrue("neutral must not double as a hue", scheme.iconNeutral !in distinct)
     }
 
@@ -78,8 +80,10 @@ class IconColorsTest {
         "mute" to scheme.iconMute,
         "drafts" to scheme.iconDrafts,
         "unread" to scheme.iconUnread,
+        "archive" to scheme.iconArchive,
         "restore" to scheme.iconRestore,
         "send" to scheme.iconSend,
+        "read" to scheme.iconRead,
     )
 
     private fun contrastRatio(a: Color, b: Color): Double {

@@ -80,6 +80,10 @@
     <string name="spam_empty">Önemsiz mesaj yok</string>
     <string name="spam_open">Önemsiz klasörünü aç</string>
     <string name="spam_restore">Önemsizlerden çıkar</string>
+    <string name="archive_title">Arşiv</string>
+    <string name="archive_empty">Arşivlenmiş sohbet yok</string>
+    <string name="archive_open">Arşiv klasörünü aç</string>
+    <string name="archive_restore">Arşivden çıkar</string>
     <string name="drafts_title">Taslaklar</string>
     <string name="drafts_open">Taslakları aç</string>
     <string name="drafts_empty">Taslak yok</string>
@@ -87,6 +91,7 @@
     <string name="drafts_send">Taslağı gönder</string>
 
     <string name="selection_close">Seçimi kapat</string>
+    <string name="app_bar_overflow">Diğer işlemler</string>
     <!-- Turkish selects between "one" and "other" even though they read alike. -->
     <plurals name="selection_count">
         <item quantity="one">%1$d seçildi</item>
@@ -96,7 +101,11 @@
     <string name="conversations_unpin">Sabitlemeyi kaldır</string>
     <string name="conversations_move_to_spam">Önemsizlere taşı</string>
     <string name="conversations_move_to_inbox">Gelen kutusuna taşı</string>
+    <string name="conversations_move_to_archive">Arşive taşı</string>
+    <string name="conversations_archive">Arşivle</string>
     <string name="conversations_mark_unread">Okunmadı olarak işaretle</string>
+    <string name="conversations_mark_read">Okundu olarak işaretle</string>
+    <string name="conversations_mark_all_read">Tümünü okundu olarak işaretle</string>
 
     <!-- Actions offered when a phone number is tapped inside a message. -->
     <string name="phone_action_message">Mesaj</string>

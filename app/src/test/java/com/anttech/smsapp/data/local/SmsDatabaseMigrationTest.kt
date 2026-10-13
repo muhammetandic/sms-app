@@ -31,7 +31,7 @@ import org.robolectric.annotation.Config
 class SmsDatabaseMigrationTest {
 
     /** The schema this test migrates up to; keep in lockstep with `version` on [SmsDatabase]. */
-    private val currentVersion = 16
+    private val currentVersion = 17
 
     @get:Rule
     val helper = MigrationTestHelper(
@@ -113,6 +113,7 @@ class SmsDatabaseMigrationTest {
             SmsDatabase.MIGRATION_13_14,
             SmsDatabase.MIGRATION_14_15,
             SmsDatabase.MIGRATION_15_16,
+            SmsDatabase.MIGRATION_16_17,
         )
     }
 }

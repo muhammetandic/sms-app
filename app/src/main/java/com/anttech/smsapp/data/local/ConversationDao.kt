@@ -30,8 +30,8 @@ interface ConversationDao {
      * assembled at runtime.
      */
     /**
-     * The inbox: everything not moved to spam. Pinned rows float above the
-     * rest, each group ordered by most recent message.
+     * The inbox: everything not moved to spam or archived. Pinned rows float
+     * above the rest, each group ordered by most recent message.
      *
      * Message-less conversations are excluded: the only way one exists is a
      * draft composed to a new recipient, and that draft belongs on the drafts
@@ -39,7 +39,7 @@ interface ConversationDao {
      * the conversation has a message and joins the inbox normally.
      */
     @Query(
-        "$SNIPPET_QUERY WHERE c.is_spam = 0 " +
+        "$SNIPPET_QUERY WHERE c.is_spam = 0 AND c.is_archived = 0 " +
             "AND EXISTS (SELECT 1 FROM messages m2 WHERE m2.conversation_id = c.id) " +
             "ORDER BY c.is_pinned DESC, c.last_message_at DESC",
     )
@@ -48,6 +48,14 @@ interface ConversationDao {
     /** The spam folder: the same rows, minus the inbox. */
     @Query("$SNIPPET_QUERY WHERE c.is_spam = 1 ORDER BY c.last_message_at DESC")
     fun observeSpamConversations(): Flow<List<ConversationSummary>>
+
+    /**
+     * The archive: the same rows, hidden from the inbox but treated as ordinary
+     * mail. Spam wins over archive, so a conversation moved to spam never shows
+     * in both folders.
+     */
+    @Query("$SNIPPET_QUERY WHERE c.is_spam = 0 AND c.is_archived = 1 ORDER BY c.last_message_at DESC")
+    fun observeArchivedConversations(): Flow<List<ConversationSummary>>
 
     @Query("SELECT * FROM conversations WHERE id = :id")
     suspend fun getById(id: Long): ConversationEntity?
@@ -72,6 +80,18 @@ interface ConversationDao {
 
     @Query("UPDATE conversations SET unread_count = 0 WHERE id = :id")
     suspend fun markRead(id: Long)
+
+    /** Marks a batch of conversations read, for selection mode. */
+    @Query("UPDATE conversations SET unread_count = 0 WHERE id IN (:ids)")
+    suspend fun markRead(ids: List<Long>)
+
+    /** Marks every conversation read, for the inbox's "mark all read". */
+    @Query("UPDATE conversations SET unread_count = 0")
+    suspend fun markAllRead()
+
+    /** Every conversation id, so the provider write-back can cover the store. */
+    @Query("SELECT id FROM conversations")
+    suspend fun allIds(): List<Long>
 
     /**
      * Marks a batch of conversations unread again. The count floors at one
@@ -114,6 +134,14 @@ interface ConversationDao {
     /** Pins or unpins a batch of conversations. */
     @Query("UPDATE conversations SET is_pinned = :isPinned WHERE id IN (:ids)")
     suspend fun setPinned(ids: List<Long>, isPinned: Boolean)
+
+    /**
+     * Archives or unarchives a batch of conversations. Unlike spam this leaves
+     * the unread count alone: an archived thread that is restored should still
+     * show the badges it earned while hidden.
+     */
+    @Query("UPDATE conversations SET is_archived = :isArchived WHERE id IN (:ids)")
+    suspend fun setArchived(ids: List<Long>, isArchived: Boolean)
 
     /** Deletes a batch of conversations; their messages cascade with them. */
     @Query("DELETE FROM conversations WHERE id IN (:ids)")

@@ -201,6 +201,42 @@ class ConversationsViewModelTest {
     }
 
     @Test
+    fun `marking conversations read dismisses their notifications`() = runTest(mainDispatcherRule.testDispatcher) {
+        givenInbound("+15550000001", "one", 1_000L)
+        givenInbound("+15550000002", "two", 2_000L)
+        var cancelled = 0
+        val viewModel = ConversationsViewModel(
+            conversations,
+            { true },
+            cancelNotification = { cancelled += it.size },
+            dispatcher = mainDispatcherRule.testDispatcher,
+        )
+        val ids = viewModel.uiState.first { !it.isLoading }.conversations.map { it.id }.toSet()
+
+        viewModel.markConversationsRead(ids)
+
+        assertEquals(ids.size, cancelled)
+    }
+
+    @Test
+    fun `marking all conversations read dismisses every notification`() = runTest(mainDispatcherRule.testDispatcher) {
+        givenInbound("+15550000001", "one", 1_000L)
+        givenInbound("+15550000002", "two", 2_000L)
+        var cancelled = 0
+        val viewModel = ConversationsViewModel(
+            conversations,
+            { true },
+            cancelNotification = { cancelled += it.size },
+            dispatcher = mainDispatcherRule.testDispatcher,
+        )
+        viewModel.uiState.first { !it.isLoading }
+
+        viewModel.markAllConversationsRead()
+
+        assertEquals(2, cancelled)
+    }
+
+    @Test
     fun `marking an unread row unread keeps its existing count`() = runTest(mainDispatcherRule.testDispatcher) {
         givenInbound("+15550000001", "first", 1_000L)
         givenInbound("+15550000001", "second", 2_000L)

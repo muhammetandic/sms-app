@@ -61,6 +61,12 @@ class ThreadViewModel(
     private val recipient: String,
     private val isSmsRoleHeld: () -> Boolean,
     private val send: suspend (recipient: String, body: String) -> SendOutcome,
+    /**
+     * Dismisses this conversation's notification, if one is showing. Injected
+     * rather than built from a Context so the ViewModel stays free of framework
+     * services and a test can observe the call.
+     */
+    private val cancelNotification: () -> Unit = {},
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
@@ -114,6 +120,10 @@ class ThreadViewModel(
         viewModelScope.launch {
             conversationRepository.markConversationRead(conversationId)
             muted.value = conversationRepository.isMuted(conversationId)
+            // Reading the thread is the moment the alert has served its purpose.
+            // The store is the source of truth, so a notification left on screen
+            // would contradict what the app now shows; dismiss it either way.
+            cancelNotification()
         }
     }
 
@@ -229,6 +239,7 @@ class ThreadViewModel(
             recipient: String,
             isSmsRoleHeld: () -> Boolean,
             send: suspend (String, String) -> SendOutcome,
+            cancelNotification: () -> Unit = {},
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -239,6 +250,7 @@ class ThreadViewModel(
                     recipient = recipient,
                     isSmsRoleHeld = isSmsRoleHeld,
                     send = send,
+                    cancelNotification = cancelNotification,
                 ) as T
         }
     }

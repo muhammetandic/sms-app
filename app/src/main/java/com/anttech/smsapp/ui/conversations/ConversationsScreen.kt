@@ -18,9 +18,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Badge
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -59,11 +62,13 @@ import com.anttech.smsapp.ui.components.ConfirmDeleteConversations
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
 import com.anttech.smsapp.ui.theme.OnAvatarColor
 import com.anttech.smsapp.ui.theme.avatarColorFor
+import com.anttech.smsapp.ui.theme.iconArchive
 import com.anttech.smsapp.ui.theme.iconDelete
 import com.anttech.smsapp.ui.theme.iconDrafts
 import com.anttech.smsapp.ui.theme.iconMute
 import com.anttech.smsapp.ui.theme.iconNeutral
 import com.anttech.smsapp.ui.theme.iconPin
+import com.anttech.smsapp.ui.theme.iconRead
 import com.anttech.smsapp.ui.theme.iconSpam
 import com.anttech.smsapp.ui.theme.iconUnread
 
@@ -76,6 +81,7 @@ fun ConversationsRoute(
     onResume: () -> Unit,
     onOpenSpam: () -> Unit,
     onOpenDrafts: () -> Unit,
+    onOpenArchive: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     onCompose: () -> Unit,
@@ -107,6 +113,7 @@ fun ConversationsRoute(
         onRequestSmsRole = onRequestSmsRole,
         onOpenSpam = onOpenSpam,
         onOpenDrafts = onOpenDrafts,
+        onOpenArchive = onOpenArchive,
         onOpenSearch = onOpenSearch,
         onOpenSettings = onOpenSettings,
         onCompose = onCompose,
@@ -114,6 +121,9 @@ fun ConversationsRoute(
         onMoveToSpam = viewModel::moveToSpam,
         onSetPinned = viewModel::setConversationsPinned,
         onMarkUnread = viewModel::markConversationsUnread,
+        onMarkRead = viewModel::markConversationsRead,
+        onMarkAllRead = viewModel::markAllConversationsRead,
+        onArchiveConversations = viewModel::archiveConversations,
     )
 }
 
@@ -125,6 +135,7 @@ fun ConversationsScreen(
     onRequestSmsRole: () -> Unit,
     onOpenSpam: () -> Unit,
     onOpenDrafts: () -> Unit,
+    onOpenArchive: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     onCompose: () -> Unit,
@@ -132,12 +143,19 @@ fun ConversationsScreen(
     onMoveToSpam: (Set<Long>) -> Unit,
     onSetPinned: (Set<Long>, Boolean) -> Unit,
     onMarkUnread: (Set<Long>) -> Unit,
+    onMarkRead: (Set<Long>) -> Unit,
+    onMarkAllRead: () -> Unit,
+    onArchiveConversations: (Set<Long>) -> Unit,
 ) {
     // Selected conversation ids; an empty set means normal mode, anything else
     // puts the bar into selection mode. Long-pressing a row enters it with that
     // row selected, and tapping rows while it is active toggles them.
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     val isSelecting = selectedIds.isNotEmpty()
+
+    // The overflow menus are anchored to the same app-bar button in both
+    // modes, so one flag drives whichever menu is currently shown.
+    var overflowExpanded by remember { mutableStateOf(false) }
 
     // The batch being deleted, held until the confirmation dialog is answered.
     // A dialog is required because deletion is permanent.
@@ -148,7 +166,10 @@ fun ConversationsScreen(
     val unpinLabel = stringResource(R.string.conversations_unpin)
     val moveToSpamLabel = stringResource(R.string.conversations_move_to_spam)
     val markUnreadLabel = stringResource(R.string.conversations_mark_unread)
+    val markReadLabel = stringResource(R.string.conversations_mark_read)
+    val moveToArchiveLabel = stringResource(R.string.conversations_move_to_archive)
     val deleteLabel = stringResource(R.string.dialog_delete)
+    val overflowLabel = stringResource(R.string.app_bar_overflow)
 
     Scaffold(
         // The list scrolls under the bar, so the bar has to be told the content
@@ -195,23 +216,13 @@ fun ConversationsScreen(
                             )
                         }
                         IconButton(onClick = {
-                            onSetPinned(selectedIds, !allPinned)
+                            onArchiveConversations(selectedIds)
                             selectedIds = emptySet()
                         }) {
                             Icon(
-                                painter = painterResource(R.drawable.ic_action_pin),
-                                contentDescription = if (allPinned) unpinLabel else pinLabel,
-                                tint = MaterialTheme.colorScheme.iconPin,
-                            )
-                        }
-                        IconButton(onClick = {
-                            onMarkUnread(selectedIds)
-                            selectedIds = emptySet()
-                        }) {
-                            Icon(
-                                painter = painterResource(R.drawable.ic_action_unread),
-                                contentDescription = markUnreadLabel,
-                                tint = MaterialTheme.colorScheme.iconUnread,
+                                painter = painterResource(R.drawable.ic_action_archive),
+                                contentDescription = moveToArchiveLabel,
+                                tint = MaterialTheme.colorScheme.iconArchive,
                             )
                         }
                         IconButton(onClick = { pendingDelete = selectedIds }) {
@@ -221,6 +232,33 @@ fun ConversationsScreen(
                                 tint = MaterialTheme.colorScheme.iconDelete,
                             )
                         }
+                        // Pin and the read-state actions sit in the overflow
+                        // rather than the bar: with these three plus the close
+                        // control, a fifth icon would squeeze the count title
+                        // until it ellipsised.
+                        SelectionMenu(
+                            expanded = overflowExpanded,
+                            onExpandedChange = { overflowExpanded = it },
+                            allPinned = allPinned,
+                            pinLabel = if (allPinned) unpinLabel else pinLabel,
+                            markUnreadLabel = markUnreadLabel,
+                            markReadLabel = markReadLabel,
+                            onTogglePinned = {
+                                overflowExpanded = false
+                                onSetPinned(selectedIds, !allPinned)
+                                selectedIds = emptySet()
+                            },
+                            onMarkUnread = {
+                                overflowExpanded = false
+                                onMarkUnread(selectedIds)
+                                selectedIds = emptySet()
+                            },
+                            onMarkRead = {
+                                overflowExpanded = false
+                                onMarkRead(selectedIds)
+                                selectedIds = emptySet()
+                            },
+                        )
                     } else {
                         IconButton(onClick = onOpenSearch) {
                             Icon(
@@ -243,13 +281,22 @@ fun ConversationsScreen(
                                 tint = MaterialTheme.colorScheme.iconDrafts,
                             )
                         }
-                        IconButton(onClick = onOpenSettings) {
+                        IconButton(onClick = onOpenArchive) {
                             Icon(
-                                imageVector = Icons.Filled.Settings,
-                                contentDescription = stringResource(R.string.settings_open),
-                                tint = MaterialTheme.colorScheme.iconNeutral,
+                                painter = painterResource(R.drawable.ic_action_archive),
+                                contentDescription = stringResource(R.string.archive_open),
+                                tint = MaterialTheme.colorScheme.iconArchive,
                             )
                         }
+                        AppBarMenu(
+                            expanded = overflowExpanded,
+                            onExpandedChange = { overflowExpanded = it },
+                            overflowLabel = overflowLabel,
+                            markAllReadLabel = stringResource(R.string.conversations_mark_all_read),
+                            settingsLabel = stringResource(R.string.settings_open),
+                            onMarkAllRead = onMarkAllRead,
+                            onOpenSettings = onOpenSettings,
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -320,6 +367,138 @@ fun ConversationsScreen(
 /** Selects the row that does not have it yet, deselects the one that does. */
 private fun toggleSelection(selected: Set<Long>, id: Long): Set<Long> =
     if (id in selected) selected - id else selected + id
+
+/**
+ * The app bar's ⋮ button and its menu while nothing is selected.
+ *
+ * The folder shortcuts (spam, drafts, archive) stay as direct icons
+ * because they are destinations the user navigates to often; the two
+ * whole-list actions that are used less live here so the bar keeps a
+ * readable title. Each menu icon is tinted with the palette rather
+ * than left the default grey, so the entries read as the same
+ * coloured actions their toolbar icons do.
+ */
+@Composable
+private fun AppBarMenu(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    overflowLabel: String,
+    markAllReadLabel: String,
+    settingsLabel: String,
+    onMarkAllRead: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    IconButton(onClick = { onExpandedChange(true) }) {
+        Icon(
+            imageVector = Icons.Filled.MoreVert,
+            contentDescription = overflowLabel,
+            tint = MaterialTheme.colorScheme.iconNeutral,
+        )
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
+        DropdownMenuItem(
+            text = { Text(markAllReadLabel) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_action_mark_read),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.iconRead,
+                )
+            },
+            onClick = {
+                onExpandedChange(false)
+                onMarkAllRead()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(settingsLabel) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.iconNeutral,
+                )
+            },
+            onClick = {
+                onExpandedChange(false)
+                onOpenSettings()
+            },
+        )
+    }
+}
+
+/**
+ * The ⋮ menu while conversations are selected: pin and the two
+ * read-state actions, which are batch operations on the selection.
+ *
+ * The title is the pin's own label because a mixed batch pins and an
+ * all-pinned batch unpins, so the entry has to say which way it will
+ * go rather than carrying a fixed "pin" word.
+ */
+@Composable
+private fun SelectionMenu(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    allPinned: Boolean,
+    pinLabel: String,
+    markUnreadLabel: String,
+    markReadLabel: String,
+    onTogglePinned: () -> Unit,
+    onMarkUnread: () -> Unit,
+    onMarkRead: () -> Unit,
+) {
+    IconButton(onClick = { onExpandedChange(true) }) {
+        Icon(
+            imageVector = Icons.Filled.MoreVert,
+            contentDescription = stringResource(R.string.app_bar_overflow),
+            tint = MaterialTheme.colorScheme.iconNeutral,
+        )
+    }
+    DropdownMenu(expanded = expanded, onDismissRequest = { onExpandedChange(false) }) {
+        DropdownMenuItem(
+            text = { Text(pinLabel) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_action_pin),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.iconPin,
+                )
+            },
+            onClick = {
+                onExpandedChange(false)
+                onTogglePinned()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(markUnreadLabel) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_action_unread),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.iconUnread,
+                )
+            },
+            onClick = {
+                onExpandedChange(false)
+                onMarkUnread()
+            },
+        )
+        DropdownMenuItem(
+            text = { Text(markReadLabel) },
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(R.drawable.ic_action_mark_read),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.iconRead,
+                )
+            },
+            onClick = {
+                onExpandedChange(false)
+                onMarkRead()
+            },
+        )
+    }
+}
 
 /**
  * One conversation row, shared by the inbox and the spam folder.

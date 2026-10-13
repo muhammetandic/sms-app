@@ -167,6 +167,41 @@ class WriteBackTest {
     }
 
     @Test
+    fun `marking several conversations read mirrors the read state`() = runTest {
+        importRepository.importFromProvider(
+            listOf(
+                providerMessage(id = 1L),
+                providerMessage(id = 5L, address = "+15555555555"),
+            ),
+        )
+        val rows = conversations.observeConversations().first()
+
+        conversations.setConversationsRead(rows.map { it.id }.toSet())
+
+        assertEquals(
+            setOf(ProviderRowRef(1L), ProviderRowRef(5L)),
+            writer.markedRead.toSet(),
+        )
+    }
+
+    @Test
+    fun `marking all conversations read mirrors every provider row`() = runTest {
+        importRepository.importFromProvider(
+            listOf(
+                providerMessage(id = 1L),
+                providerMessage(id = 5L, address = "+15555555555"),
+            ),
+        )
+
+        conversations.markAllConversationsRead()
+
+        assertEquals(
+            setOf(ProviderRowRef(1L), ProviderRowRef(5L)),
+            writer.markedRead.toSet(),
+        )
+    }
+
+    @Test
     fun `a received message is written to the inbox and linked for later mirrors`() = runTest {
         val message = InboundMessage("+15551234567", "hello", 1L, parts = 1)
         val rowId = repository.recordInbound(message, partCount = 1)!!

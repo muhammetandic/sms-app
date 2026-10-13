@@ -34,6 +34,9 @@ class ConversationRepository(
     fun observeSpamConversations(): Flow<List<ConversationSummary>> =
         conversationDao.observeSpamConversations()
 
+    fun observeArchivedConversations(): Flow<List<ConversationSummary>> =
+        conversationDao.observeArchivedConversations()
+
     /**
      * Marks a conversation read in the store and mirrors the change to every
      * provider message this app can identify in it, so the system inbox's badge
@@ -62,6 +65,27 @@ class ConversationRepository(
     }
 
     /**
+     * Marks a batch of conversations read in the store, mirroring the change to
+     * the provider's copy of every message this app can identify. This is the
+     * selection-mode counterpart of [markConversationRead].
+     */
+    suspend fun setConversationsRead(ids: Set<Long>) {
+        if (ids.isEmpty()) return
+        telephonyWriter.markRead(messageDao.providerIdsInConversations(ids.toList()).toProviderRefs())
+        conversationDao.markRead(ids.toList())
+    }
+
+    /**
+     * Marks every conversation read and clears the provider badges for all the
+     * rows this app wrote. The provider ids are read in one query rather than
+     * per conversation, because the whole store can be covered by one tap.
+     */
+    suspend fun markAllConversationsRead() {
+        telephonyWriter.markRead(messageDao.allProviderIds().toProviderRefs())
+        conversationDao.markAllRead()
+    }
+
+    /**
      * Moves a conversation into or out of the spam folder.
      *
      * Messages are kept rather than deleted so the folder is viewable and the
@@ -79,6 +103,17 @@ class ConversationRepository(
 
     /** Whether a conversation is muted, so its arrivals stay quiet. */
     suspend fun isMuted(conversationId: Long): Boolean = conversationDao.isMuted(conversationId) == true
+
+    /**
+     * Archives or unarchives a batch of conversations, hiding them from the
+     * inbox without deleting them. Unarchiving is how the archive folder
+     * restores a row. A no-op for an empty list, because Room rejects an empty
+     * `IN` list.
+     */
+    suspend fun setConversationsArchived(ids: Collection<Long>, isArchived: Boolean) {
+        if (ids.isEmpty()) return
+        conversationDao.setArchived(ids.toList(), isArchived)
+    }
 
     /**
      * Deletes a whole conversation from the store.
@@ -183,10 +218,21 @@ class ConversationRepository(
     internal suspend fun findOrCreateConversation(address: String, timestamp: Long): Long =
         findOrCreateConversation(listOf(address), timestamp)
 
-    /** Adds one to a conversation's unread count after an inbound row is stored. */
+    /**
+     * Adds one to a conversation's unread count after an inbound row is stored,
+     * and pulls an archived conversation back into the inbox.
+     *
+     * An archived thread is hidden but still ordinary mail, so a reply to one
+     * belongs where the user will see it rather than buried in the archive.
+     */
     internal suspend fun bumpUnread(conversationId: Long) {
         val conversation = conversationDao.getById(conversationId) ?: return
-        conversationDao.update(conversation.copy(unreadCount = conversation.unreadCount + 1))
+        conversationDao.update(
+            conversation.copy(
+                unreadCount = conversation.unreadCount + 1,
+                isArchived = false,
+            ),
+        )
     }
 
     /**
@@ -214,6 +260,9 @@ class ConversationRepository(
             conversationDao.delete(conversationId)
         }
     }
+
+    /** Every conversation id, so a store-wide mark-all-read can cancel each alert. */
+    suspend fun conversationIds(): List<Long> = conversationDao.allIds()
 
     /**
      * The provider rows behind a batch of local provider ids, for write-back.

@@ -102,7 +102,13 @@ class NotificationActionReceiver(
                 return
             }
 
-            ACTION_MARK_READ -> conversationRepository.markConversationRead(conversationId)
+            ACTION_MARK_READ -> {
+                // A failure to mirror the read must not leave the alert on
+                // screen, so the notification is cancelled either way; the
+                // store write is best-effort behind dismissing it.
+                runCatching { conversationRepository.markConversationRead(conversationId) }
+                    .onFailure { Log.e(LogTags.RECEIVE, "Mark read failed", it) }
+            }
 
             ACTION_MARK_SPAM -> {
                 // The alert for a conversation the user just called spam would
