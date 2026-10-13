@@ -73,7 +73,7 @@ class MessageRepository(
      * clears with this app's.
      */
     suspend fun markConversationRead(conversationId: Long) {
-        telephonyWriter.markRead(messageDao.getByConversation(conversationId).providerRefs())
+        telephonyWriter.markRead(messageDao.providerIdsInConversation(conversationId).toProviderRefs())
         conversationDao.markRead(conversationId)
     }
 
@@ -82,11 +82,15 @@ class MessageRepository(
      * to every provider message this app can identify in them, so the system
      * inbox's badge returns with this app's. The count is floored at one rather
      * than accumulated, matching [ConversationDao.markUnread].
+     *
+     * The provider ids are collected in one query and written back in one call,
+     * rather than per conversation: selection mode can cover the whole list, and
+     * a query plus a provider write per row is the difference between a tap and
+     * a stall.
      */
     suspend fun setConversationsUnread(ids: Set<Long>) {
-        for (id in ids) {
-            telephonyWriter.markUnread(messageDao.getByConversation(id).providerRefs())
-        }
+        if (ids.isEmpty()) return
+        telephonyWriter.markUnread(messageDao.providerIdsInConversations(ids.toList()).toProviderRefs())
         conversationDao.markUnread(ids.toList())
     }
 
@@ -161,7 +165,7 @@ class MessageRepository(
      * disappear together with the message the user is dismissing.
      */
     suspend fun deleteConversation(conversationId: Long) {
-        telephonyWriter.delete(messageDao.getByConversation(conversationId).providerRefs())
+        telephonyWriter.delete(messageDao.providerIdsInConversation(conversationId).toProviderRefs())
         conversationDao.delete(conversationId)
     }
 
@@ -190,7 +194,7 @@ class MessageRepository(
      */
     suspend fun deleteConversations(ids: Collection<Long>) {
         if (ids.isEmpty()) return
-        telephonyWriter.delete(messageDao.getByConversations(ids.toList()).providerRefs())
+        telephonyWriter.delete(messageDao.providerIdsInConversations(ids.toList()).toProviderRefs())
         conversationDao.delete(ids.toList())
     }
 
@@ -198,13 +202,12 @@ class MessageRepository(
     suspend fun conversationIdForMessage(messageId: Long): Long? = messageDao.getById(messageId)?.conversationId
 
     /**
-     * The provider rows behind a batch of local messages, for write-back.
+     * The provider rows behind a batch of local provider ids, for write-back.
      *
-     * Only rows with a known provider id are mirrored; empty for rows the
-     * provider refused to store, which have no identity to write back to.
+     * The ids come from a query that already dropped the nulls, so every one
+     * here is a provider row this app can write to.
      */
-    private fun List<MessageEntity>.providerRefs(): List<ProviderRowRef> =
-        mapNotNull { message -> message.providerId?.let { ProviderRowRef(it) } }
+    private fun List<Long>.toProviderRefs(): List<ProviderRowRef> = map(::ProviderRowRef)
 
     /** Resolves the conversation for a sender, used to deep-link a notification. */
     suspend fun conversationIdFor(address: String): Long? =

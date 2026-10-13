@@ -27,13 +27,18 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE id = :id")
     suspend fun getById(id: Long): MessageEntity?
 
-    /** All rows of a conversation, for mirroring provider writes before a delete. */
-    @Query("SELECT * FROM messages WHERE conversation_id = :conversationId")
-    suspend fun getByConversation(conversationId: Long): List<MessageEntity>
+    /**
+     * Provider ids of a conversation's messages, for mirroring a read-state or
+     * delete write-back to the provider. Only the ids are read: loading whole
+     * rows just to reach them would copy every body of a long thread for a
+     * write that needs none of it.
+     */
+    @Query("SELECT provider_id FROM messages WHERE conversation_id = :conversationId AND provider_id IS NOT NULL")
+    suspend fun providerIdsInConversation(conversationId: Long): List<Long>
 
-    /** Rows across several conversations, for the batch delete write-back. */
-    @Query("SELECT * FROM messages WHERE conversation_id IN (:ids)")
-    suspend fun getByConversations(ids: List<Long>): List<MessageEntity>
+    /** Provider ids across several conversations, for a batch write-back. */
+    @Query("SELECT provider_id FROM messages WHERE conversation_id IN (:ids) AND provider_id IS NOT NULL")
+    suspend fun providerIdsInConversations(ids: List<Long>): List<Long>
 
     @Query("SELECT COUNT(*) FROM messages WHERE dedupe_key = :dedupeKey")
     suspend fun countByDedupeKey(dedupeKey: String): Int
