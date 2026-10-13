@@ -30,6 +30,9 @@ class SmsSendCoordinatorTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    // Conversation state, split out of the message store and shared by the
+    // surfaces that work in whole conversations.
+    private val conversations get() = repository.conversations
     private lateinit var writer: RecordingTelephonyMessageWriter
 
     @Before
@@ -64,7 +67,7 @@ class SmsSendCoordinatorTest {
         )
         assertTrue(
             "no conversation was created for a send the radio would refuse",
-            repository.observeConversations().first().isEmpty(),
+            conversations.observeConversations().first().isEmpty(),
         )
         assertTrue("nothing was handed to the transport", transport.sentParts.isEmpty())
         assertTrue("nothing was written to the provider", writer.insertedSent.isEmpty())
@@ -78,7 +81,7 @@ class SmsSendCoordinatorTest {
         val outcome = coordinator.send("+15551234567", "permission denied")
 
         assertEquals(SendOutcome(SendState.FAILED, 0, 0, ResultCode.GENERIC_FAILURE), outcome)
-        assertTrue(repository.observeConversations().first().isEmpty())
+        assertTrue(conversations.observeConversations().first().isEmpty())
         assertTrue(transport.sentParts.isEmpty())
         assertTrue(writer.insertedSent.isEmpty())
     }
@@ -91,7 +94,7 @@ class SmsSendCoordinatorTest {
         val outcome = coordinator.send("   ", "hello")
 
         assertEquals(ResultCode.GENERIC_FAILURE, outcome.code)
-        assertTrue(repository.observeConversations().first().isEmpty())
+        assertTrue(conversations.observeConversations().first().isEmpty())
         assertTrue(transport.sentParts.isEmpty())
     }
 

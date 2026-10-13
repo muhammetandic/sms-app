@@ -31,6 +31,9 @@ class ProviderImportTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    // Conversation state, split out of the message store and shared by the
+    // surfaces that work in whole conversations.
+    private val conversations get() = repository.conversations
     private lateinit var importRepository: ProviderImportRepository
 
     @Before
@@ -80,7 +83,7 @@ class ProviderImportTest {
         assertEquals(2, inserted)
         // Same sender, so one conversation with two messages. Counting
         // conversations would confuse grouping with insertion.
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         assertEquals(2, repository.observeMessages(conversation.id).first().size)
     }
 
@@ -91,7 +94,7 @@ class ProviderImportTest {
 
         // Runs on every launch, so this must be a no-op rather than a duplicate.
         assertEquals(0, importRepository.importFromProvider(messages))
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         assertEquals(2, repository.observeMessages(conversation.id).first().size)
     }
 
@@ -114,7 +117,7 @@ class ProviderImportTest {
             val inserted = importRepository.importFromProvider(listOf(providerMessage(1L)))
 
             assertEquals(0, inserted)
-            val conversationId = repository.conversationIdFor("+15551234567")!!
+            val conversationId = conversations.conversationIdFor("+15551234567")!!
             assertEquals(1, repository.observeMessages(conversationId).first().size)
         }
 
@@ -127,7 +130,7 @@ class ProviderImportTest {
             ),
         )
 
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         assertEquals("+15551234567", conversation.displayAddress)
         assertEquals(AddressNormalizer.conversationKey("+15551234567"), conversation.addressKey)
     }
@@ -141,14 +144,14 @@ class ProviderImportTest {
             ),
         )
 
-        assertEquals(2, repository.observeConversations().first().size)
+        assertEquals(2, conversations.observeConversations().first().size)
     }
 
     @Test
     fun `an incoming row is stored as delivered`() = runTest(mainDispatcherRule.testDispatcher) {
         importRepository.importFromProvider(listOf(providerMessage(1L)))
 
-        val conversationId = repository.conversationIdFor("+15551234567")!!
+        val conversationId = conversations.conversationIdFor("+15551234567")!!
         val message = repository.observeMessages(conversationId).first().single()
 
         assertEquals(MessageDirection.INCOMING, message.direction)
@@ -162,7 +165,7 @@ class ProviderImportTest {
             listOf(providerMessage(1L, type = SmsProviderTypes.MESSAGE_TYPE_SENT)),
         )
 
-        val conversationId = repository.conversationIdFor("+15551234567")!!
+        val conversationId = conversations.conversationIdFor("+15551234567")!!
         val message = repository.observeMessages(conversationId).first().single()
 
         assertEquals(MessageDirection.OUTGOING, message.direction)
@@ -184,7 +187,7 @@ class ProviderImportTest {
     fun `imported history does not mark anything unread`() = runTest(mainDispatcherRule.testDispatcher) {
         importRepository.importFromProvider(listOf(providerMessage(1L), providerMessage(2L)))
 
-        assertTrue(repository.observeConversations().first().all { it.unreadCount == 0 })
+        assertTrue(conversations.observeConversations().first().all { it.unreadCount == 0 })
     }
 
     @Test
@@ -198,7 +201,7 @@ class ProviderImportTest {
                 ),
             )
 
-            assertEquals(5_000L, repository.observeConversations().first().single().lastMessageAt)
+            assertEquals(5_000L, conversations.observeConversations().first().single().lastMessageAt)
         }
 
     @Test
@@ -297,7 +300,7 @@ class ProviderImportTest {
         // finds them already linked (old path) or the watermark no longer
         // differs (new path), so in both cases only the first inserts.
         assertEquals(2, inserted.sum())
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         assertEquals(2, repository.observeMessages(conversation.id).first().size)
     }
 

@@ -189,6 +189,9 @@ private fun SmsNavHost(
     val navigationScope = rememberCoroutineScope()
     val dataGraph = DataGraph.get(context)
     val repository = dataGraph.messageRepository
+    // The conversation store, for the surfaces that work in whole conversations:
+    // the inbox, the spam folder, the search list and the deep-link lookup.
+    val conversationRepository = dataGraph.conversationRepository
     // One resolver for the whole app, so screens, notifications and the
     // compose picker all share the same contact cache.
     val contactNames = dataGraph.contactNames
@@ -219,7 +222,7 @@ private fun SmsNavHost(
     }
 
     LaunchedEffect(pendingDeepLinkId) {
-        initialRecipient = pendingDeepLinkId?.let { repository.recipientFor(it) }
+        initialRecipient = pendingDeepLinkId?.let { conversationRepository.recipientFor(it) }
     }
 
     // A SENDTO request is one-shot, like the notification deep link above.
@@ -240,7 +243,7 @@ private fun SmsNavHost(
     NavHost(navController = navController, startDestination = Routes.CONVERSATIONS) {
         composable(Routes.CONVERSATIONS) {
             val viewModel: ConversationsViewModel = viewModel(
-                factory = ConversationsViewModel.factory(repository, isSmsRoleHeld, contactNames),
+                factory = ConversationsViewModel.factory(conversationRepository, isSmsRoleHeld, contactNames),
             )
             ConversationsRoute(
                 viewModel = viewModel,
@@ -374,7 +377,7 @@ private fun SmsNavHost(
         // and neither list can hold a row the other still claims.
         composable(Routes.SPAM) {
             val viewModel: SpamViewModel = viewModel(
-                factory = SpamViewModel.factory(repository, contactNames),
+                factory = SpamViewModel.factory(conversationRepository, contactNames),
             )
             SpamRoute(
                 viewModel = viewModel,
@@ -417,7 +420,7 @@ private fun SmsNavHost(
 
         composable(Routes.SEARCH) {
             val viewModel: SearchViewModel = viewModel(
-                factory = SearchViewModel.factory(repository, contactNames::displayLabel),
+                factory = SearchViewModel.factory(repository, conversationRepository, contactNames::displayLabel),
             )
             SearchRoute(
                 viewModel = viewModel,
@@ -452,6 +455,7 @@ private fun SmsNavHost(
             val viewModel: ThreadViewModel = viewModel(
                 factory = ThreadViewModel.factory(
                     repository = repository,
+                    conversationRepository = conversationRepository,
                     conversationId = conversationId,
                     recipient = recipient,
                     isSmsRoleHeld = isSmsRoleHeld,

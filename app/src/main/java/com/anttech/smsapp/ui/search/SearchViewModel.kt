@@ -3,6 +3,7 @@ package com.anttech.smsapp.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.anttech.smsapp.data.ConversationRepository
 import com.anttech.smsapp.data.MessageRepository
 import com.anttech.smsapp.data.local.MessageSearchHit
 import com.anttech.smsapp.ui.TimeFormat
@@ -48,6 +49,7 @@ data class SearchResult(
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class SearchViewModel(
     private val repository: MessageRepository,
+    private val conversationRepository: ConversationRepository,
     private val resolveName: suspend (String) -> String?,
 ) : ViewModel() {
 
@@ -94,7 +96,7 @@ class SearchViewModel(
         // A conversation can match by its contact name while none of its stored
         // rows contain the text, so the address list has to be added to the SQL
         // results rather than filtered by them.
-        for (conversation in repository.observeConversations().first()) {
+        for (conversation in conversationRepository.observeConversations().first()) {
             if (conversation.id in matchedConversationIds) continue
             val title = resolveName(conversation.displayAddress) ?: conversation.displayAddress
             if (title.contains(query, ignoreCase = true) ||
@@ -122,11 +124,12 @@ class SearchViewModel(
 
         fun factory(
             repository: MessageRepository,
+            conversationRepository: ConversationRepository,
             resolveName: suspend (String) -> String?,
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                SearchViewModel(repository, resolveName) as T
+                SearchViewModel(repository, conversationRepository, resolveName) as T
         }
     }
 }

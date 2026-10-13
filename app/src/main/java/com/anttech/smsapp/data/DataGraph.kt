@@ -27,6 +27,14 @@ class DataGraph private constructor(
     )
 
     /**
+     * Conversation-level queries and commands, split out of [messageRepository].
+     * Derived from the message store rather than built separately so an injected
+     * test store and the app graph hand out the same instance: the thread screen
+     * and the inbox it came from must share one read count.
+     */
+    val conversationRepository: ConversationRepository get() = messageRepository.conversations
+
+    /**
      * Backfills provider history into the local store, over the same database as
      * [messageRepository]. Only the import path reads it, and a test that injects
      * its own [MessageRepository] does not drive that path.

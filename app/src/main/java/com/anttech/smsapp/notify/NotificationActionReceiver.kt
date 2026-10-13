@@ -75,6 +75,7 @@ class NotificationActionReceiver(
         messageId: Long,
     ) {
         val repository = DataGraph.get(context).messageRepository
+        val conversationRepository = DataGraph.get(context).conversationRepository
 
         when (action) {
             ACTION_REPLY -> {
@@ -95,19 +96,19 @@ class NotificationActionReceiver(
                         .onFailure { Log.e(LogTags.SEND, "Quick reply failed to send", it) }
                 // A reply answers the alert, so the thread is read and the
                 // notification goes away with the sender.
-                repository.markConversationRead(conversationId)
+                conversationRepository.markConversationRead(conversationId)
                 cancel(context, conversationId)
                 Log.d(LogTags.RECEIVE, "Replied from notification to $recipient")
                 return
             }
 
-            ACTION_MARK_READ -> repository.markConversationRead(conversationId)
+            ACTION_MARK_READ -> conversationRepository.markConversationRead(conversationId)
 
             ACTION_MARK_SPAM -> {
                 // The alert for a conversation the user just called spam would
                 // keep reappearing on every future message from it, so silence it
                 // as part of the same move.
-                repository.setConversationSpam(conversationId, isSpam = true)
+                conversationRepository.setConversationSpam(conversationId, isSpam = true)
                 cancel(context, conversationId)
                 Log.d(LogTags.RECEIVE, "Moved conversation $conversationId to spam")
                 return

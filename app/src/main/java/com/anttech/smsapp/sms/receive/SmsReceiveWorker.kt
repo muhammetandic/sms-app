@@ -52,15 +52,15 @@ object SmsReceiveWorker {
         // the local copy alone rather than dropping the message.
         graph.messageRepository.mirrorInboundToProvider(rowId, message)
 
-        val conversationId = graph.messageRepository.conversationIdFor(message.address)
+        val conversationId = graph.conversationRepository.conversationIdFor(message.address)
         if (conversationId != null) {
-            val spam = graph.messageRepository.isSpam(conversationId)
+            val spam = graph.conversationRepository.isSpam(conversationId)
             // A conversation the user moved to spam stays quiet. A blocked sender
             // lands in spam the moment the message is stored, also quiet. Both are
             // kept visible in their folders; only the alert is suppressed.
             val freshlyBlocked = !spam && BlockedSenders(context).isBlocked(message.address)
             if (freshlyBlocked) {
-                graph.messageRepository.setConversationSpam(conversationId, true)
+                graph.conversationRepository.setConversationSpam(conversationId, true)
             }
             if (spam || freshlyBlocked) {
                 Log.d(
@@ -73,7 +73,7 @@ object SmsReceiveWorker {
             // A muted conversation still stores and counts the message; only the
             // notification is suppressed. Unlike spam, the row stays in the
             // inbox so the unread badge keeps speaking.
-            if (graph.messageRepository.isMuted(conversationId)) {
+            if (graph.conversationRepository.isMuted(conversationId)) {
                 Log.d(
                     LogTags.RECEIVE,
                     "Stored muted message from ${message.address} without notifying",

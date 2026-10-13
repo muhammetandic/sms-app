@@ -2,8 +2,6 @@ package com.anttech.smsapp.data
 
 import com.anttech.smsapp.data.local.AddressNormalizer
 import com.anttech.smsapp.data.local.ConversationDao
-import com.anttech.smsapp.data.local.ConversationEntity
-import com.anttech.smsapp.data.local.ConversationSummary
 import com.anttech.smsapp.data.local.DraftDao
 import com.anttech.smsapp.data.local.DraftEntity
 import com.anttech.smsapp.data.local.DraftConversationSummary
@@ -19,10 +17,8 @@ import com.anttech.smsapp.data.telephony.TelephonyMessageWriter
 import com.anttech.smsapp.data.telephony.NoopTelephonyMessageWriter
 import com.anttech.smsapp.sms.receive.InboundMessage
 import com.anttech.smsapp.sms.receive.InboundMessageKey
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /**
@@ -40,17 +36,35 @@ import java.util.UUID
  * holds imported history.
  */
 class MessageRepository(
-    private val conversationDao: ConversationDao,
+    /**
+     * Conversation state, shared with the surfaces that work in whole
+     * conversations rather than messages. Exposed so the graph hands every
+     * caller the same instance the message path writes through: a thread and the
+     * inbox that lists it must agree on the read count and last-message time.
+     */
+    val conversations: ConversationRepository,
     private val messageDao: MessageDao,
     private val draftDao: DraftDao,
     /** Mirrors local mutations back to the platform provider. Test default is a no-op. */
     private val telephonyWriter: TelephonyMessageWriter = NoopTelephonyMessageWriter(),
 ) {
 
-    fun observeConversations(): Flow<List<ConversationSummary>> = conversationDao.observeConversations()
-
-    fun observeSpamConversations(): Flow<List<ConversationSummary>> =
-        conversationDao.observeSpamConversations()
+    /**
+     * Builds the conversation store over the given DAOs. Convenience for callers
+     * that already hold them: tests construct a store from a database's DAOs and
+     * do not care how the two pieces are wired together.
+     */
+    constructor(
+        conversationDao: ConversationDao,
+        messageDao: MessageDao,
+        draftDao: DraftDao,
+        telephonyWriter: TelephonyMessageWriter = NoopTelephonyMessageWriter(),
+    ) : this(
+        ConversationRepository(conversationDao, messageDao, telephonyWriter),
+        messageDao,
+        draftDao,
+        telephonyWriter,
+    )
 
     fun observeDraftConversations(): Flow<List<DraftConversationSummary>> =
         draftDao.observeDraftConversations()
@@ -59,160 +73,31 @@ class MessageRepository(
         messageDao.observeMessages(conversationId)
 
     /**
-     * Marks a conversation read in the store and mirrors the change to every
-     * provider message this app can identify in it, so the system inbox's badge
-     * clears with this app's.
-     */
-    suspend fun markConversationRead(conversationId: Long) {
-        telephonyWriter.markRead(messageDao.providerIdsInConversation(conversationId).toProviderRefs())
-        conversationDao.markRead(conversationId)
-    }
-
-    /**
-     * Marks a batch of conversations unread in the store and mirrors the change
-     * to every provider message this app can identify in them, so the system
-     * inbox's badge returns with this app's. The count is floored at one rather
-     * than accumulated, matching [ConversationDao.markUnread].
-     *
-     * The provider ids are collected in one query and written back in one call,
-     * rather than per conversation: selection mode can cover the whole list, and
-     * a query plus a provider write per row is the difference between a tap and
-     * a stall.
-     */
-    suspend fun setConversationsUnread(ids: Set<Long>) {
-        if (ids.isEmpty()) return
-        telephonyWriter.markUnread(messageDao.providerIdsInConversations(ids.toList()).toProviderRefs())
-        conversationDao.markUnread(ids.toList())
-    }
-
-    /**
-     * Moves a conversation into or out of the spam folder.
-     *
-     * Messages are kept rather than deleted so the folder is viewable and the
-     * move is reversible; only the inbox/spam split changes.
-     */
-    suspend fun setConversationSpam(conversationId: Long, isSpam: Boolean) =
-        conversationDao.setSpam(conversationId, isSpam)
-
-    /** Whether a conversation is in the spam folder, so its arrivals stay quiet. */
-    suspend fun isSpam(conversationId: Long): Boolean = conversationDao.isSpam(conversationId) == true
-
-    /** Mutes or unmutes a conversation, silencing only its incoming alerts. */
-    suspend fun setConversationMuted(conversationId: Long, isMuted: Boolean) =
-        conversationDao.setMuted(conversationId, isMuted)
-
-    /** Whether a conversation is muted, so its arrivals stay quiet. */
-    suspend fun isMuted(conversationId: Long): Boolean = conversationDao.isMuted(conversationId) == true
-
-    /**
      * Deletes a single message, keeping the derived conversation state honest.
      *
-     * Three things have to be corrected alongside the row itself, and each was a
-     * real bug found on the emulator when only the row was deleted:
+     * The row itself is removed here; the conversation's own corrections - an
+     * incoming message taking one off the unread count, and a conversation with
+     * no messages left being dropped rather than shown as a permanent empty row -
+     * are [ConversationRepository.onMessageRemoved]'s, because the inbox and the
+     * spam folder are what read them.
      *
-     * - An incoming message takes one off the unread count, or the inbox keeps
-     *   advertising a message that is no longer there.
-     * - A conversation with no messages left is deleted, or the inbox shows a
-     *   permanent empty row with no snippet.
-     * - The snippet comes from a subquery over the messages table, so it follows
-     *   the delete on its own; only the stored counters need writing.
-     *
-     * The conversation is only removed when it is empty, which is why this is not
-     * a plain foreign key: the cascade on `messages` runs the other way.
+     * The provider copy is mirrored first: the provider row is only reachable
+     * while the local row still carries its id. Rows the provider refused to
+     * store have none and are skipped. The conversation is only removed when it
+     * is empty, which is why this is not a plain foreign key: the cascade on
+     * `messages` runs the other way.
      */
     suspend fun deleteMessage(messageId: Long) {
         val message = messageDao.getById(messageId) ?: return
-        // Mirror before removing locally: the provider row is only reachable
-        // while the local row still carries its id. Rows the provider refused
-        // to store have none and are skipped.
         message.providerId?.let { telephonyWriter.delete(listOf(ProviderRowRef(it))) }
-        val conversationId = message.conversationId
         val removed = messageDao.delete(messageId)
         if (removed == 0) return
 
-        if (messageDao.countInConversation(conversationId) == 0) {
-            conversationDao.delete(conversationId)
-            return
-        }
-
-        // Only incoming messages are ever counted unread, so an outgoing delete
-        // must leave the counter alone. MAX keeps it from going negative if the
-        // count was already out of step with the messages present.
-        if (message.direction == MessageDirection.INCOMING) {
-            conversationDao.decrementUnread(conversationId)
-        }
+        conversations.onMessageRemoved(
+            conversationId = message.conversationId,
+            wasIncoming = message.direction == MessageDirection.INCOMING,
+        )
     }
-
-    /**
-     * Deletes a whole conversation from the store.
-     *
-     * The messages table cascades on the conversation id, so removing the row
-     * also removes every message it holds. The inbox and the spam folder both
-     * read this table, so the row disappears from whichever list showed it.
-     * The provider rows behind any imported or sent messages are deleted first.
-     *
-     * [deleteMessage] is preferred when only one message is unwanted: this path
-     * discards the conversation's unread state too, so an inbox badge can
-     * disappear together with the message the user is dismissing.
-     */
-    suspend fun deleteConversation(conversationId: Long) {
-        telephonyWriter.delete(messageDao.providerIdsInConversation(conversationId).toProviderRefs())
-        conversationDao.delete(conversationId)
-    }
-
-    /**
-     * Pins or unpins a batch of conversations so they stay at the top of the
-     * inbox. A no-op for an empty list, because room rejects an empty `IN` list.
-     */
-    suspend fun setConversationsPinned(ids: Collection<Long>, isPinned: Boolean) {
-        if (ids.isEmpty()) return
-        conversationDao.setPinned(ids.toList(), isPinned)
-    }
-
-    /**
-     * Moves a batch of conversations into or out of the spam folder, keeping
-     * the same semantics as a single move: unread counts are cleared in the
-     * same write so the spam folder never shows a badge for the move itself.
-     */
-    suspend fun setConversationsSpam(ids: Collection<Long>, isSpam: Boolean) {
-        if (ids.isEmpty()) return
-        conversationDao.setSpam(ids.toList(), isSpam)
-    }
-
-    /**
-     * Deletes a batch of conversations and every message they hold, from
-     * whatever list (inbox or spam) currently shows them.
-     */
-    suspend fun deleteConversations(ids: Collection<Long>) {
-        if (ids.isEmpty()) return
-        telephonyWriter.delete(messageDao.providerIdsInConversations(ids.toList()).toProviderRefs())
-        conversationDao.delete(ids.toList())
-    }
-
-    /** Conversation id for a message row, needed to target a notification action. */
-    suspend fun conversationIdForMessage(messageId: Long): Long? = messageDao.getById(messageId)?.conversationId
-
-    /**
-     * The provider rows behind a batch of local provider ids, for write-back.
-     *
-     * The ids come from a query that already dropped the nulls, so every one
-     * here is a provider row this app can write to.
-     */
-    private fun List<Long>.toProviderRefs(): List<ProviderRowRef> = map(::ProviderRowRef)
-
-    /** Resolves the conversation for a sender, used to deep-link a notification. */
-    suspend fun conversationIdFor(address: String): Long? =
-        conversationDao.getByAddressKey(AddressNormalizer.conversationKey(address))?.id
-
-    /**
-     * Address to reply to, for a conversation already in the store.
-     *
-     * A notification tap carries a conversation id but no address, and sending to
-     * the wrong address is not a recoverable mistake, so the thread screen refuses
-     * to send until this resolves.
-     */
-    suspend fun recipientFor(conversationId: Long): String? =
-        conversationDao.getById(conversationId)?.displayAddress?.takeIf { it.isNotBlank() }
 
     /**
      * Persists one inbound message, ignoring it if the same message was already
@@ -220,7 +105,7 @@ class MessageRepository(
      */
     suspend fun recordInbound(message: InboundMessage, partCount: Int): Long? {
         val key = InboundMessageKey.of(message)
-        val conversationId = findOrCreateConversation(message.address, message.timestampMillis)
+        val conversationId = conversations.findOrCreateConversation(message.address, message.timestampMillis)
         val rowId = messageDao.insert(
             MessageEntity(
                 conversationId = conversationId,
@@ -234,7 +119,7 @@ class MessageRepository(
         )
         if (rowId == -1L) return null
 
-        bumpUnread(conversationId)
+        conversations.bumpUnread(conversationId)
         return rowId
     }
 
@@ -248,7 +133,7 @@ class MessageRepository(
         simSlot: Int? = null,
         partCount: Int = 1,
     ): Long {
-        val conversationId = findOrCreateConversation(address, sentAt)
+        val conversationId = conversations.findOrCreateConversation(address, sentAt)
         return messageDao.insert(
             MessageEntity(
                 conversationId = conversationId,
@@ -375,13 +260,13 @@ class MessageRepository(
             return draftId
         }
         if (body.isBlank()) {
-            conversationDao.getByAddressKey(AddressNormalizer.groupKey(members))?.let {
-                saveDraft(it.id, "")
-                return it.id
+            conversations.conversationIdForMembers(members)?.let {
+                saveDraft(it, "")
+                return it
             }
             return null
         }
-        val conversationId = findOrCreateConversation(members, System.currentTimeMillis())
+        val conversationId = conversations.findOrCreateConversation(members, System.currentTimeMillis())
         // A standalone compose session owns its own draft row: a contact may
         // have several independent unsent messages, which the drafts screen
         // lists separately. Editing one of them passes its id above instead.
@@ -392,9 +277,7 @@ class MessageRepository(
     suspend fun deleteDraft(draftId: Long) {
         val draft = draftDao.byId(draftId) ?: return
         draftDao.deleteById(draftId)
-        if (messageDao.countInConversation(draft.conversationId) == 0) {
-            conversationDao.delete(draft.conversationId)
-        }
+        conversations.deleteIfEmpty(draft.conversationId)
     }
 
     /**
@@ -424,43 +307,6 @@ class MessageRepository(
      * a short time), so it is safe to fail at startup.
      */
     private fun startOfStuckWindow(): Long = System.currentTimeMillis() - STUCK_WINDOW_MILLIS
-
-    private suspend fun findOrCreateConversation(address: String, timestamp: Long): Long =
-        findOrCreateConversation(listOf(address), timestamp)
-
-    /**
-     * Resolves or creates the conversation for a participant set.
-     *
-     * A single member shares the plain-SMS conversation; two or more become a
-     * group keyed on the sorted normalized members. The display address is the
-     * member list as the user typed it, which is what the thread and the
-     * notification show.
-     */
-    private suspend fun findOrCreateConversation(members: List<String>, timestamp: Long): Long {
-        val display = members.map { it.trim() }.filter { it.isNotBlank() }
-        if (display.isEmpty()) error("Cannot create a conversation without any recipient")
-        val key = AddressNormalizer.groupKey(display)
-
-        conversationDao.getByAddressKey(key)?.let { existing ->
-            if (timestamp > existing.lastMessageAt) {
-                conversationDao.update(existing.copy(lastMessageAt = timestamp))
-            }
-            return existing.id
-        }
-
-        return conversationDao.insert(
-            ConversationEntity(
-                addressKey = key,
-                displayAddress = display.joinToString(", "),
-                lastMessageAt = timestamp,
-            ),
-        )
-    }
-
-    private suspend fun bumpUnread(conversationId: Long) {
-        val conversation = conversationDao.getById(conversationId) ?: return
-        conversationDao.update(conversation.copy(unreadCount = conversation.unreadCount + 1))
-    }
 
     private companion object {
         /**

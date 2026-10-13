@@ -27,6 +27,9 @@ class WriteBackTest {
     private lateinit var database: SmsDatabase
     private lateinit var writer: RecordingTelephonyMessageWriter
     private lateinit var repository: MessageRepository
+    // Conversation state, split out of the message store and shared by the
+    // surfaces that work in whole conversations.
+    private val conversations get() = repository.conversations
     private lateinit var importRepository: ProviderImportRepository
 
     @Before
@@ -74,7 +77,7 @@ class WriteBackTest {
     fun `deleting an imported message mirrors the provider delete`() = runTest {
         // Imported history carries the provider row's own id.
         importRepository.importFromProvider(listOf(providerMessage(id = 7L)))
-        val messageId = repository.observeMessages(repository.observeConversations().first().single().id).first().single().id
+        val messageId = repository.observeMessages(conversations.observeConversations().first().single().id).first().single().id
 
         repository.deleteMessage(messageId)
 
@@ -86,7 +89,7 @@ class WriteBackTest {
         // A message received over SMS_DELIVER has no provider id; mirroring it
         // would mean matching on content, deleting something it cannot identify.
         repository.recordInbound(InboundMessage("+15551234567", "hello", 1L, parts = 1), partCount = 1)
-        val messageId = repository.observeMessages(repository.observeConversations().first().single().id).first().single().id
+        val messageId = repository.observeMessages(conversations.observeConversations().first().single().id).first().single().id
 
         repository.deleteMessage(messageId)
 
@@ -101,9 +104,9 @@ class WriteBackTest {
                 providerMessage(id = 2L, body = "second"),
             ),
         )
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
 
-        repository.deleteConversation(conversation.id)
+        conversations.deleteConversation(conversation.id)
 
         assertEquals(
             setOf(ProviderRowRef(1L), ProviderRowRef(2L)),
@@ -119,10 +122,10 @@ class WriteBackTest {
                 providerMessage(id = 5L, address = "+15555555555"),
             ),
         )
-        val readConversation = repository.observeConversations().first()
+        val readConversation = conversations.observeConversations().first()
             .first { it.displayAddress == "+15551234567" }
 
-        repository.markConversationRead(readConversation.id)
+        conversations.markConversationRead(readConversation.id)
 
         assertEquals(
             setOf(ProviderRowRef(1L)),
@@ -137,9 +140,9 @@ class WriteBackTest {
             repository.updateOutgoingStatus(id, MessageStatus.SENT, providerId = 42L)
         }
         repository.recordInbound(InboundMessage("+15551234567", "yes", 2L, parts = 1), partCount = 1)
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
 
-        repository.markConversationRead(conversation.id)
+        conversations.markConversationRead(conversation.id)
 
         assertEquals(listOf(ProviderRowRef(42L)), writer.markedRead)
     }
@@ -152,10 +155,10 @@ class WriteBackTest {
                 providerMessage(id = 5L, address = "+15555555555"),
             ),
         )
-        val unreadConversation = repository.observeConversations().first()
+        val unreadConversation = conversations.observeConversations().first()
             .first { it.displayAddress == "+15551234567" }
 
-        repository.setConversationsUnread(setOf(unreadConversation.id))
+        conversations.setConversationsUnread(setOf(unreadConversation.id))
 
         assertEquals(
             setOf(ProviderRowRef(1L)),
@@ -219,7 +222,7 @@ class WriteBackTest {
         )
 
         assertEquals(0, inserted)
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         assertEquals(1, repository.observeMessages(conversation.id).first().size)
     }
 

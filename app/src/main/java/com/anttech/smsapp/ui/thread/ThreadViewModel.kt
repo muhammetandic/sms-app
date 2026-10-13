@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import android.util.Log
+import com.anttech.smsapp.data.ConversationRepository
 import com.anttech.smsapp.data.MessageRepository
 import com.anttech.smsapp.data.local.MessageDirection
 import com.anttech.smsapp.data.local.MessageEntity
@@ -55,6 +56,7 @@ data class MessageBubble(
 
 class ThreadViewModel(
     private val repository: MessageRepository,
+    private val conversationRepository: ConversationRepository,
     private val conversationId: Long,
     private val recipient: String,
     private val isSmsRoleHeld: () -> Boolean,
@@ -110,8 +112,8 @@ class ThreadViewModel(
 
     init {
         viewModelScope.launch {
-            repository.markConversationRead(conversationId)
-            muted.value = repository.isMuted(conversationId)
+            conversationRepository.markConversationRead(conversationId)
+            muted.value = conversationRepository.isMuted(conversationId)
         }
     }
 
@@ -124,8 +126,8 @@ class ThreadViewModel(
         val target = !muted.value
         muted.value = target
         viewModelScope.launch {
-            repository.setConversationMuted(conversationId, target)
-            muted.value = repository.isMuted(conversationId)
+            conversationRepository.setConversationMuted(conversationId, target)
+            muted.value = conversationRepository.isMuted(conversationId)
         }
     }
 
@@ -222,6 +224,7 @@ class ThreadViewModel(
 
         fun factory(
             repository: MessageRepository,
+            conversationRepository: ConversationRepository,
             conversationId: Long,
             recipient: String,
             isSmsRoleHeld: () -> Boolean,
@@ -231,6 +234,7 @@ class ThreadViewModel(
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
                 ThreadViewModel(
                     repository = repository,
+                    conversationRepository = conversationRepository,
                     conversationId = conversationId,
                     recipient = recipient,
                     isSmsRoleHeld = isSmsRoleHeld,

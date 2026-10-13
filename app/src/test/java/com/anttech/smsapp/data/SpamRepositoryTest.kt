@@ -35,6 +35,9 @@ class SpamRepositoryTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    // Conversation state, split out of the message store and shared by the
+    // surfaces that work in whole conversations.
+    private val conversations get() = repository.conversations
 
     @Before
     fun setUp() {
@@ -61,19 +64,19 @@ class SpamRepositoryTest {
     private fun inbound(address: String, timestamp: Long) =
         InboundMessage(address = address, body = "hello", timestampMillis = timestamp, parts = 1)
 
-    private suspend fun inbox() = repository.observeConversations().first()
-    private suspend fun spam() = repository.observeSpamConversations().first()
+    private suspend fun inbox() = conversations.observeConversations().first()
+    private suspend fun spam() = conversations.observeSpamConversations().first()
 
     @Test
     fun `spam conversation leaves the inbox and enters the spam folder`() = runTest {
-        val conversationId = repository.conversationIdFor("+15551234567")
+        val conversationId = conversations.conversationIdFor("+15551234567")
         assertNull(conversationId)
 
         repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
-        val id = repository.conversationIdFor("+15551234567")!!
+        val id = conversations.conversationIdFor("+15551234567")!!
         assertEquals(1, inbox().size)
 
-        repository.setConversationSpam(id, isSpam = true)
+        conversations.setConversationSpam(id, isSpam = true)
 
         assertTrue("conversation should be gone from the inbox", inbox().isEmpty())
         assertEquals(1, spam().size)
@@ -83,22 +86,22 @@ class SpamRepositoryTest {
     @Test
     fun `restoring a conversation returns it to the inbox`() = runTest {
         repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
-        val id = repository.conversationIdFor("+15551234567")!!
+        val id = conversations.conversationIdFor("+15551234567")!!
 
-        repository.setConversationSpam(id, isSpam = true)
-        repository.setConversationSpam(id, isSpam = false)
+        conversations.setConversationSpam(id, isSpam = true)
+        conversations.setConversationSpam(id, isSpam = false)
 
         assertEquals(1, inbox().size)
         assertTrue("conversation should be gone from spam", spam().isEmpty())
-        assertFalse(repository.isSpam(id))
+        assertFalse(conversations.isSpam(id))
     }
 
     @Test
     fun `moving to spam keeps the messages`() = runTest {
         repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
-        val id = repository.conversationIdFor("+15551234567")!!
+        val id = conversations.conversationIdFor("+15551234567")!!
 
-        repository.setConversationSpam(id, isSpam = true)
+        conversations.setConversationSpam(id, isSpam = true)
 
         val messages = repository.observeMessages(id).first()
         assertEquals("marking spam must not delete messages", 1, messages.size)
@@ -108,10 +111,10 @@ class SpamRepositoryTest {
     @Test
     fun `marking as spam clears the unread count in the same write`() = runTest {
         repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
-        val id = repository.conversationIdFor("+15551234567")!!
+        val id = conversations.conversationIdFor("+15551234567")!!
         assertEquals(1, inbox().single().unreadCount)
 
-        repository.setConversationSpam(id, isSpam = true)
+        conversations.setConversationSpam(id, isSpam = true)
 
         assertEquals(
             "a message the user just dismissed must not stay unread in spam",
@@ -123,8 +126,8 @@ class SpamRepositoryTest {
     @Test
     fun `spam does not block later messages from being stored`() = runTest {
         repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
-        val id = repository.conversationIdFor("+15551234567")!!
-        repository.setConversationSpam(id, isSpam = true)
+        val id = conversations.conversationIdFor("+15551234567")!!
+        conversations.setConversationSpam(id, isSpam = true)
 
         repository.recordInbound(inbound("+15551234567", 1_700_000_001_000L), partCount = 1)
 
@@ -134,18 +137,18 @@ class SpamRepositoryTest {
     @Test
     fun `isSpam reflects the flag`() = runTest {
         repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
-        val id = repository.conversationIdFor("+15551234567")!!
+        val id = conversations.conversationIdFor("+15551234567")!!
 
-        assertFalse(repository.isSpam(id))
-        repository.setConversationSpam(id, isSpam = true)
-        assertTrue(repository.isSpam(id))
+        assertFalse(conversations.isSpam(id))
+        conversations.setConversationSpam(id, isSpam = true)
+        assertTrue(conversations.isSpam(id))
     }
 
     @Test
     fun `deleting a message leaves the rest of the conversation intact`() = runTest {
         repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
         repository.recordInbound(inbound("+15551234567", 1_700_000_001_000L), partCount = 1)
-        val id = repository.conversationIdFor("+15551234567")!!
+        val id = conversations.conversationIdFor("+15551234567")!!
         val first = repository.observeMessages(id).first().first()
 
         repository.deleteMessage(first.id)

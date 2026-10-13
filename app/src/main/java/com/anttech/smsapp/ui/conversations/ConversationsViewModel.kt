@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.anttech.smsapp.contacts.ContactNameResolver
-import com.anttech.smsapp.data.MessageRepository
+import com.anttech.smsapp.data.ConversationRepository
 import com.anttech.smsapp.data.local.ConversationSummary
 import com.anttech.smsapp.ui.TimeFormat
 import kotlinx.coroutines.CoroutineDispatcher
@@ -49,7 +49,7 @@ data class ConversationRow(
 }
 
 class ConversationsViewModel(
-    private val repository: MessageRepository,
+    private val repository: ConversationRepository,
     private val isSmsRoleHeld: () -> Boolean,
     private val contactNames: ContactNameResolver? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -154,7 +154,7 @@ class ConversationsViewModel(
         private const val STOP_TIMEOUT_MILLIS = 5_000L
 
         fun factory(
-            repository: MessageRepository,
+            repository: ConversationRepository,
             isSmsRoleHeld: () -> Boolean,
             contactNames: ContactNameResolver? = null,
         ) = object : ViewModelProvider.Factory {

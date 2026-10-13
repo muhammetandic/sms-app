@@ -27,6 +27,9 @@ class MessageRepositoryTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    // Conversation state, split out of the message store and shared by the
+    // surfaces that work in whole conversations.
+    private val conversations get() = repository.conversations
 
     @Before
     fun setUp() {
@@ -57,7 +60,7 @@ class MessageRepositoryTest {
         val rowId = repository.recordInbound(inbound(), partCount = 1)
 
         assertNotNull(rowId)
-        val conversations = repository.observeConversations().first()
+        val conversations = repository.conversations.observeConversations().first()
         assertEquals(1, conversations.size)
         assertEquals("hello", conversations.single().snippet)
     }
@@ -65,16 +68,16 @@ class MessageRepositoryTest {
     @Test
     fun `muting a conversation persists independently of the spam flag`() = runTest {
         repository.recordInbound(inbound(), partCount = 1)
-        val conversationId = requireNotNull(repository.conversationIdFor(inbound().address))
-        assertFalse(repository.isMuted(conversationId))
+        val conversationId = requireNotNull(conversations.conversationIdFor(inbound().address))
+        assertFalse(conversations.isMuted(conversationId))
 
-        repository.setConversationMuted(conversationId, true)
-        assertTrue(repository.isMuted(conversationId))
-        assertFalse(repository.isSpam(conversationId))
-        assertTrue(repository.observeConversations().first().single().isMuted)
+        conversations.setConversationMuted(conversationId, true)
+        assertTrue(conversations.isMuted(conversationId))
+        assertFalse(conversations.isSpam(conversationId))
+        assertTrue(conversations.observeConversations().first().single().isMuted)
 
-        repository.setConversationMuted(conversationId, false)
-        assertFalse(repository.isMuted(conversationId))
+        conversations.setConversationMuted(conversationId, false)
+        assertFalse(conversations.isMuted(conversationId))
     }
 
     @Test
@@ -94,12 +97,12 @@ class MessageRepositoryTest {
 
         // The draft belongs on the drafts screen; an inbox row with no message
         // and no snippet would be a blank entry the user cannot act on.
-        assertTrue(repository.observeConversations().first().isEmpty())
+        assertTrue(conversations.observeConversations().first().isEmpty())
         assertEquals("not sent yet", repository.observeDraftConversations().first().single().body)
 
         // Sending it gives the conversation a message, so it joins the inbox.
         repository.recordOutgoing("+15551234567", "not sent yet", 1_000L)
-        assertEquals(1, repository.observeConversations().first().size)
+        assertEquals(1, conversations.observeConversations().first().size)
     }
 
     @Test
@@ -108,7 +111,7 @@ class MessageRepositoryTest {
         val second = repository.recordInbound(inbound(), partCount = 1)
 
         assertNull(second)
-        assertEquals(1, repository.observeConversations().first().size)
+        assertEquals(1, conversations.observeConversations().first().size)
     }
 
     @Test
@@ -116,7 +119,7 @@ class MessageRepositoryTest {
         repository.recordInbound(inbound(), partCount = 1)
         repository.recordInbound(inbound(), partCount = 1)
 
-        assertEquals(1, repository.observeConversations().first().single().unreadCount)
+        assertEquals(1, conversations.observeConversations().first().single().unreadCount)
     }
 
     @Test
@@ -124,7 +127,7 @@ class MessageRepositoryTest {
         repository.recordInbound(inbound(body = "first"), partCount = 1)
         repository.recordInbound(inbound(body = "second"), partCount = 1)
 
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         assertEquals(2, conversation.unreadCount)
         assertEquals(2, repository.observeMessages(conversation.id).first().size)
     }
@@ -134,7 +137,7 @@ class MessageRepositoryTest {
         repository.recordInbound(inbound(body = "a", timestamp = 1L), partCount = 1)
         repository.recordInbound(inbound(body = "b", timestamp = 2L), partCount = 1)
 
-        val conversations = repository.observeConversations().first()
+        val conversations = repository.conversations.observeConversations().first()
         assertEquals(1, conversations.size)
         assertEquals(2, repository.observeMessages(conversations.single().id).first().size)
     }
@@ -144,7 +147,7 @@ class MessageRepositoryTest {
         repository.recordInbound(inbound(address = "+1 (555) 123-4567", body = "a"), partCount = 1)
         repository.recordInbound(inbound(address = "+15551234567", body = "b"), partCount = 1)
 
-        assertEquals(1, repository.observeConversations().first().size)
+        assertEquals(1, conversations.observeConversations().first().size)
     }
 
     @Test
@@ -152,14 +155,14 @@ class MessageRepositoryTest {
         repository.recordInbound(inbound(address = "+15551111111"), partCount = 1)
         repository.recordInbound(inbound(address = "+15552222222"), partCount = 1)
 
-        assertEquals(2, repository.observeConversations().first().size)
+        assertEquals(2, conversations.observeConversations().first().size)
     }
 
     @Test
     fun `alphanumeric sender gets its own conversation`() = runTest {
         repository.recordInbound(inbound(address = "Google", body = "code 1234"), partCount = 1)
 
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         assertEquals("google", conversation.addressKey)
         assertEquals("Google", conversation.displayAddress)
     }
@@ -169,29 +172,29 @@ class MessageRepositoryTest {
         repository.recordInbound(inbound(address = "+15551111111", timestamp = 100L), partCount = 1)
         repository.recordInbound(inbound(address = "+15552222222", timestamp = 200L), partCount = 1)
 
-        val conversations = repository.observeConversations().first()
+        val conversations = repository.conversations.observeConversations().first()
         assertEquals("+15552222222", conversations.first().addressKey)
     }
 
     @Test
     fun `marking conversation read clears unread count`() = runTest {
         repository.recordInbound(inbound(), partCount = 1)
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
 
-        repository.markConversationRead(conversation.id)
+        conversations.markConversationRead(conversation.id)
 
-        assertEquals(0, repository.observeConversations().first().single().unreadCount)
+        assertEquals(0, conversations.observeConversations().first().single().unreadCount)
     }
 
     @Test
     fun `marking a conversation unread restores the unread count`() = runTest {
         repository.recordInbound(inbound(), partCount = 1)
-        val conversation = repository.observeConversations().first().single()
-        repository.markConversationRead(conversation.id)
+        val conversation = conversations.observeConversations().first().single()
+        conversations.markConversationRead(conversation.id)
 
-        repository.setConversationsUnread(setOf(conversation.id))
+        conversations.setConversationsUnread(setOf(conversation.id))
 
-        assertEquals(1, repository.observeConversations().first().single().unreadCount)
+        assertEquals(1, conversations.observeConversations().first().single().unreadCount)
     }
 
     @Test
@@ -208,7 +211,7 @@ class MessageRepositoryTest {
         repository.recordInbound(inbound(address = "+15551234567", timestamp = 1L), partCount = 1)
         repository.recordOutgoing("+15551234567", "reply", 2L)
 
-        assertEquals(1, repository.observeConversations().first().size)
+        assertEquals(1, conversations.observeConversations().first().size)
     }
 
     @Test
@@ -216,7 +219,7 @@ class MessageRepositoryTest {
         repository.recordOutgoing("+15551234567", "hi", 1L)
         repository.recordOutgoing("+15551234567", "hi", 1L)
 
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         assertEquals(2, repository.observeMessages(conversation.id).first().size)
     }
 
@@ -239,7 +242,7 @@ class MessageRepositoryTest {
 
         repository.resolveStuckOutgoing()
 
-        val statuses = repository.observeConversations().first()
+        val statuses = conversations.observeConversations().first()
             .flatMap { repository.observeMessages(it.id).first() }
             .map { it.status }
         assertTrue(statuses.all { it != MessageStatus.SENDING })
@@ -250,7 +253,7 @@ class MessageRepositoryTest {
         repository.recordInbound(inbound(body = "newer", timestamp = 200L), partCount = 1)
         repository.recordInbound(inbound(body = "older", timestamp = 100L), partCount = 1)
 
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         val bodies = repository.observeMessages(conversation.id).first().map { it.body }
 
         assertEquals(listOf("older", "newer"), bodies)
@@ -261,14 +264,14 @@ class MessageRepositoryTest {
         repository.recordInbound(inbound(body = "old text", timestamp = 100L), partCount = 1)
         repository.recordInbound(inbound(body = "new text", timestamp = 200L), partCount = 1)
 
-        assertEquals("new text", repository.observeConversations().first().single().snippet)
+        assertEquals("new text", conversations.observeConversations().first().single().snippet)
     }
 
     @Test
     fun `part count is retained`() = runTest {
         repository.recordInbound(inbound(), partCount = 4)
 
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         val message = repository.observeMessages(conversation.id).first().single()
 
         assertEquals(4, message.partCount)
@@ -285,26 +288,26 @@ class MessageRepositoryTest {
     fun `deleting an unread message drops one from the unread count`() = runTest {
         repository.recordInbound(inbound(body = "one", timestamp = 100L), partCount = 1)
         repository.recordInbound(inbound(body = "two", timestamp = 200L), partCount = 1)
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         assertEquals(2, conversation.unreadCount)
 
         val first = repository.observeMessages(conversation.id).first().first()
         repository.deleteMessage(first.id)
 
-        assertEquals(1, repository.observeConversations().first().single().unreadCount)
+        assertEquals(1, conversations.observeConversations().first().single().unreadCount)
     }
 
     @Test
     fun `deleting the only message removes the conversation`() = runTest {
         repository.recordInbound(inbound(body = "only", timestamp = 100L), partCount = 1)
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
         val message = repository.observeMessages(conversation.id).first().single()
 
         repository.deleteMessage(message.id)
 
         assertTrue(
             "an empty conversation must not linger in the inbox",
-            repository.observeConversations().first().isEmpty(),
+            conversations.observeConversations().first().isEmpty(),
         )
     }
 
@@ -312,11 +315,11 @@ class MessageRepositoryTest {
     fun `deleting a conversation removes it and its messages`() = runTest {
         repository.recordInbound(inbound(body = "one", timestamp = 100L), partCount = 1)
         repository.recordInbound(inbound(body = "two", timestamp = 200L), partCount = 1)
-        val conversation = repository.observeConversations().first().single()
+        val conversation = conversations.observeConversations().first().single()
 
-        repository.deleteConversation(conversation.id)
+        conversations.deleteConversation(conversation.id)
 
-        assertTrue(repository.observeConversations().first().isEmpty())
+        assertTrue(conversations.observeConversations().first().isEmpty())
         assertTrue(
             "deleting the row must take every message with it",
             repository.observeMessages(conversation.id).first().isEmpty(),
@@ -327,32 +330,32 @@ class MessageRepositoryTest {
     fun `deleting one conversation leaves the others alone`() = runTest {
         repository.recordInbound(inbound(address = "+15551111111", timestamp = 1L), partCount = 1)
         repository.recordInbound(inbound(address = "+15552222222", timestamp = 2L), partCount = 1)
-        val conversations = repository.observeConversations().first()
-        val keep = conversations.first { it.displayAddress == "+15552222222" }
-        val drop = conversations.first { it.displayAddress == "+15551111111" }
+        val rows = repository.conversations.observeConversations().first()
+        val keep = rows.first { it.displayAddress == "+15552222222" }
+        val drop = rows.first { it.displayAddress == "+15551111111" }
 
-        repository.deleteConversation(drop.id)
+        conversations.deleteConversation(drop.id)
 
-        assertEquals(listOf(keep.id), repository.observeConversations().first().map { it.id })
+        assertEquals(listOf(keep.id), conversations.observeConversations().first().map { it.id })
     }
 
     @Test
     fun `deleting a spam conversation removes it from the spam folder`() = runTest {
         repository.recordInbound(inbound(body = "spam", timestamp = 100L), partCount = 1)
-        val conversation = repository.observeConversations().first().single()
-        repository.setConversationSpam(conversation.id, isSpam = true)
+        val conversation = conversations.observeConversations().first().single()
+        conversations.setConversationSpam(conversation.id, isSpam = true)
 
-        repository.deleteConversation(conversation.id)
+        conversations.deleteConversation(conversation.id)
 
-        assertTrue(repository.observeSpamConversations().first().isEmpty())
+        assertTrue(conversations.observeSpamConversations().first().isEmpty())
     }
 
     @Test
     fun `deleting an outgoing message leaves the unread count alone`() = runTest {
         repository.recordInbound(inbound(body = "in", timestamp = 100L), partCount = 1)
-        repository.markConversationRead(repository.conversationIdFor("+15551234567")!!)
+        conversations.markConversationRead(conversations.conversationIdFor("+15551234567")!!)
         repository.recordOutgoing("+15551234567", "reply", 200L)
-        val conversationId = repository.conversationIdFor("+15551234567")!!
+        val conversationId = conversations.conversationIdFor("+15551234567")!!
         val outgoing = repository.observeMessages(conversationId).first().single {
             it.direction == MessageDirection.OUTGOING
         }
@@ -362,7 +365,7 @@ class MessageRepositoryTest {
         assertEquals(
             "an outgoing message was never unread",
             0,
-            repository.observeConversations().first().single().unreadCount,
+            conversations.observeConversations().first().single().unreadCount,
         )
     }
 
@@ -370,11 +373,11 @@ class MessageRepositoryTest {
     fun `pinning a conversation keeps it above a newer one`() = runTest {
         repository.recordInbound(inbound(address = "+15551111111", timestamp = 100L), partCount = 1)
         repository.recordInbound(inbound(address = "+15552222222", timestamp = 200L), partCount = 1)
-        val older = repository.observeConversations().first().first { it.addressKey == "+15551111111" }
+        val older = conversations.observeConversations().first().first { it.addressKey == "+15551111111" }
 
-        repository.setConversationsPinned(listOf(older.id), isPinned = true)
+        conversations.setConversationsPinned(listOf(older.id), isPinned = true)
 
-        val conversations = repository.observeConversations().first()
+        val conversations = repository.conversations.observeConversations().first()
         assertEquals(older.id, conversations.first().id)
         assertTrue(conversations.first().isPinned)
         assertTrue(conversations.last().isPinned.not())
@@ -384,16 +387,16 @@ class MessageRepositoryTest {
     fun `unpinning restores recency ordering`() = runTest {
         repository.recordInbound(inbound(address = "+15551111111", timestamp = 100L), partCount = 1)
         repository.recordInbound(inbound(address = "+15552222222", timestamp = 200L), partCount = 1)
-        val older = repository.observeConversations().first().first { it.addressKey == "+15551111111" }
-        repository.setConversationsPinned(listOf(older.id), isPinned = true)
+        val older = conversations.observeConversations().first().first { it.addressKey == "+15551111111" }
+        conversations.setConversationsPinned(listOf(older.id), isPinned = true)
         assertEquals(
             older.id,
-            repository.observeConversations().first().first().id,
+            conversations.observeConversations().first().first().id,
         )
 
-        repository.setConversationsPinned(listOf(older.id), isPinned = false)
+        conversations.setConversationsPinned(listOf(older.id), isPinned = false)
 
-        val conversations = repository.observeConversations().first()
+        val conversations = repository.conversations.observeConversations().first()
         assertEquals("+15552222222", conversations.first().addressKey)
     }
 
@@ -401,38 +404,38 @@ class MessageRepositoryTest {
     fun `moving conversations to spam in a batch empties the inbox`() = runTest {
         repository.recordInbound(inbound(address = "+15551111111", timestamp = 1L), partCount = 1)
         repository.recordInbound(inbound(address = "+15552222222", timestamp = 2L), partCount = 1)
-        val ids = repository.observeConversations().first().map { it.id }
+        val ids = conversations.observeConversations().first().map { it.id }
 
-        repository.setConversationsSpam(ids, isSpam = true)
+        conversations.setConversationsSpam(ids, isSpam = true)
 
-        assertTrue(repository.observeConversations().first().isEmpty())
-        assertEquals(2, repository.observeSpamConversations().first().size)
+        assertTrue(conversations.observeConversations().first().isEmpty())
+        assertEquals(2, conversations.observeSpamConversations().first().size)
     }
 
     @Test
     fun `deleting conversations in a batch removes them everywhere`() = runTest {
         repository.recordInbound(inbound(address = "+15551111111", timestamp = 1L), partCount = 1)
         repository.recordInbound(inbound(address = "+15552222222", timestamp = 2L), partCount = 1)
-        val conversations = repository.observeConversations().first()
-        val third = conversations.first().id
-        repository.setConversationSpam(third, isSpam = true)
-        val keep = repository.observeConversations().first().first()
+        val rows = repository.conversations.observeConversations().first()
+        val third = rows.first().id
+        conversations.setConversationSpam(third, isSpam = true)
+        val keep = conversations.observeConversations().first().first()
 
-        repository.deleteConversations(listOf(third, keep.id))
+        conversations.deleteConversations(listOf(third, keep.id))
 
-        assertTrue(repository.observeConversations().first().isEmpty())
-        assertTrue(repository.observeSpamConversations().first().isEmpty())
+        assertTrue(conversations.observeConversations().first().isEmpty())
+        assertTrue(conversations.observeSpamConversations().first().isEmpty())
     }
 
     @Test
     fun `deleting an empty batch leaves the store alone`() = runTest {
         repository.recordInbound(inbound(), partCount = 1)
 
-        repository.deleteConversations(emptyList())
-        repository.setConversationsPinned(emptyList(), isPinned = true)
-        repository.setConversationsSpam(emptyList(), isSpam = true)
+        conversations.deleteConversations(emptyList())
+        conversations.setConversationsPinned(emptyList(), isPinned = true)
+        conversations.setConversationsSpam(emptyList(), isSpam = true)
 
-        assertEquals(1, repository.observeConversations().first().size)
+        assertEquals(1, conversations.observeConversations().first().size)
     }
 
     @Test
@@ -482,7 +485,7 @@ class MessageRepositoryTest {
     @Test
     fun `search drops a message once it is deleted`() = runTest {
         repository.recordInbound(inbound(body = "keep me"), partCount = 1)
-        val conversationId = requireNotNull(repository.conversationIdFor(inbound().address))
+        val conversationId = requireNotNull(conversations.conversationIdFor(inbound().address))
         val doomed = repository.observeMessages(conversationId).first().single()
 
         database.messageDao().delete(doomed.id)

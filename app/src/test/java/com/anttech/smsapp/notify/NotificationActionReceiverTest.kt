@@ -41,6 +41,9 @@ class NotificationActionReceiverTest {
     private lateinit var context: Application
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    // Conversation state, split out of the message store and shared by the
+    // surfaces that work in whole conversations.
+    private val conversations get() = repository.conversations
 
     private val address = "+15551234567"
     private var conversationId: Long = 0
@@ -66,7 +69,7 @@ class NotificationActionReceiverTest {
                 InboundMessage(address, "buy now", 1_700_000_000_000L, parts = 1),
                 partCount = 1,
             )!!
-            conversationId = repository.conversationIdFor(address)!!
+            conversationId = conversations.conversationIdFor(address)!!
         }
     }
 
@@ -208,11 +211,11 @@ class NotificationActionReceiverTest {
         assertEquals(0, sendCount)
     }
 
-    private fun inbox() = runBlocking { repository.observeConversations().first() }
-    private fun spam() = runBlocking { repository.observeSpamConversations().first() }
+    private fun inbox() = runBlocking { conversations.observeConversations().first() }
+    private fun spam() = runBlocking { conversations.observeSpamConversations().first() }
     private fun messages() = runBlocking { repository.observeMessages(conversationId).first() }
     private fun unreadInInbox() = inbox().single().unreadCount
-    private fun isSpam() = runBlocking { repository.isSpam(conversationId) }
+    private fun isSpam() = runBlocking { conversations.isSpam(conversationId) }
 
     /**
      * Fires a button and waits for its write to land.

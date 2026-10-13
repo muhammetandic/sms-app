@@ -4,7 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.anttech.smsapp.contacts.ContactNameResolver
-import com.anttech.smsapp.data.MessageRepository
+import com.anttech.smsapp.data.ConversationRepository
 import com.anttech.smsapp.data.local.ConversationSummary
 import com.anttech.smsapp.ui.TimeFormat
 import com.anttech.smsapp.ui.conversations.ConversationRow
@@ -32,7 +32,7 @@ data class SpamUiState(
  * neither list can disagree about which conversation it holds.
  */
 class SpamViewModel(
-    private val repository: MessageRepository,
+    private val repository: ConversationRepository,
     private val contactNames: ContactNameResolver? = null,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
@@ -108,7 +108,7 @@ class SpamViewModel(
         private const val STOP_TIMEOUT_MILLIS = 5_000L
 
         fun factory(
-            repository: MessageRepository,
+            repository: ConversationRepository,
             contactNames: ContactNameResolver? = null,
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")

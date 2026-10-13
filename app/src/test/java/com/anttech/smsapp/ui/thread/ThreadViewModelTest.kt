@@ -31,6 +31,9 @@ class ThreadViewModelTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    // Conversation state, split out of the message store and shared by the
+    // surfaces that work in whole conversations.
+    private val conversations get() = repository.conversations
 
     private val recipient = "+15550000001"
 
@@ -56,7 +59,7 @@ class ThreadViewModelTest {
             ),
             partCount = 1,
         )
-        return requireNotNull(repository.conversationIdFor(recipient))
+        return requireNotNull(conversations.conversationIdFor(recipient))
     }
 
     private fun viewModel(
@@ -68,6 +71,7 @@ class ThreadViewModelTest {
         threadRecipient: String = recipient,
     ) = ThreadViewModel(
         repository = repository,
+        conversationRepository = conversations,
         conversationId = conversationId,
         recipient = threadRecipient,
         isSmsRoleHeld = roleHeld,
@@ -80,11 +84,11 @@ class ThreadViewModelTest {
     @Test
     fun `opening a thread marks its conversation read`() = runTest(mainDispatcherRule.testDispatcher) {
         val conversationId = givenInbound("unread message", 1_000L)
-        assertEquals(1, repository.observeConversations().first().single().unreadCount)
+        assertEquals(1, conversations.observeConversations().first().single().unreadCount)
 
         viewModel(conversationId).awaitLoaded()
 
-        assertEquals(0, repository.observeConversations().first().single().unreadCount)
+        assertEquals(0, conversations.observeConversations().first().single().unreadCount)
     }
 
     @Test
@@ -97,12 +101,12 @@ class ThreadViewModelTest {
         model.toggleMuted()
 
         assertTrue(model.uiState.first { it.isMuted }.isMuted)
-        assertTrue(repository.observeConversations().first().single().isMuted)
+        assertTrue(conversations.observeConversations().first().single().isMuted)
 
         model.toggleMuted()
 
         assertFalse(model.uiState.first { !it.isMuted }.isMuted)
-        assertFalse(repository.observeConversations().first().single().isMuted)
+        assertFalse(conversations.observeConversations().first().single().isMuted)
     }
 
     @Test
@@ -272,7 +276,7 @@ class ThreadViewModelTest {
 
         assertTrue(
             "an empty conversation must not linger",
-            repository.observeConversations().first().isEmpty(),
+            conversations.observeConversations().first().isEmpty(),
         )
     }
 

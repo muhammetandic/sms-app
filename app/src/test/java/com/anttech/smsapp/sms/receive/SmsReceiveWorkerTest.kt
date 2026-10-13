@@ -31,6 +31,9 @@ class SmsReceiveWorkerTest {
 
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
+    // Conversation state, split out of the message store and shared by the
+    // surfaces that work in whole conversations.
+    private val conversations get() = repository.conversations
     private lateinit var writer: RecordingTelephonyMessageWriter
 
     @Before
@@ -62,7 +65,7 @@ class SmsReceiveWorkerTest {
         assertEquals(listOf(expected), writer.insertedInbound)
 
         val stored = runBlocking {
-            repository.observeMessages(repository.observeConversations().first().single().id).first().single()
+            repository.observeMessages(conversations.observeConversations().first().single().id).first().single()
         }
         assertEquals(100L, stored.providerId)
         assertEquals("hello", stored.body)
