@@ -30,13 +30,18 @@ object MultipartReassembler {
         val bodies = parts.map { it.messageBody }
         if (bodies.any { it.isEmpty() }) return null
 
-        val timestamps = parts.map { it.timestampMillis }.distinct()
-        if (timestamps.size > 1) return null
+        // Some carriers stamp each PDU as it passes through a relay, so parts of
+        // the same message can arrive with slightly different timestamps. Dropping
+        // the message entirely when they disagree (the old behaviour) silently lost
+        // the message from the user's thread. Use the earliest part timestamp as the
+        // canonical send-time instead: it is the closest approximation to when the
+        // sender actually transmitted the message.
+        val timestampMillis = parts.minOf { it.timestampMillis }
 
         return InboundMessage(
             address = address.trim(),
             body = bodies.joinToString(separator = ""),
-            timestampMillis = timestamps.first(),
+            timestampMillis = timestampMillis,
             parts = parts.size,
         )
     }

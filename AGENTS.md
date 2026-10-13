@@ -5,18 +5,18 @@ Android SMS client. Kotlin + Jetpack Compose, single `:app` module, no backend.
 ## Commands
 
 ```bash
-export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+export JAVA_HOME=/home/linuxbrew/.linuxbrew/Cellar/openjdk@21/21.0.12.1/libexec
 ./gradlew :app:assembleDebug          # build debug APK
 ./gradlew :app:testDebugUnitTest      # run the unit test suite
 ./gradlew :app:lintDebug              # Android lint
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-**Always export `JAVA_HOME` first.** This project's toolchain is JDK 17; `~/.zshrc` points Java at the Android Studio JBR, so export Homebrew's `openjdk@17` before any Gradle invocation. The SDK path comes from `local.properties` (`sdk.dir`, gitignored).
+**Always export `JAVA_HOME` first.** This project's toolchain is JDK 21; `~/.zshrc` may point Java elsewhere, so export Linuxbrew's `openjdk@21` before any Gradle invocation. The SDK path comes from `local.properties` (`sdk.dir`, gitignored).
 
 Debug installs as `com.anttech.smsapp.debug` alongside a release build.
 
-Toolchain: AGP 9.4.1, AGP built-in Kotlin 2.4.21 (no `org.jetbrains.kotlin.android`), KSP, Gradle 9.8.1 wrapper, `minSdk 30` / `compileSdk` `targetSdk` 37, Java 17. Versions live in `gradle/libs.versions.toml` — add new dependencies there, never inline coordinates in `app/build.gradle.kts`. KSP registers generated sources via the (now-opted-back-in) `kotlin.sourceSets`, so keep `android.disallowKotlinSourceSets=false` in `gradle.properties`.
+Toolchain: AGP 9.4.1, AGP built-in Kotlin 2.4.21 (no `org.jetbrains.kotlin.android`), KSP, Gradle 9.8.1 wrapper, `minSdk 30` / `compileSdk` `targetSdk` 37, Java 21. Versions live in `gradle/libs.versions.toml` — add new dependencies there, never inline coordinates in `app/build.gradle.kts`. KSP registers generated sources via the (now-opted-back-in) `kotlin.sourceSets`, so keep `android.disallowKotlinSourceSets=false` in `gradle.properties`.
 
 ## Architecture
 

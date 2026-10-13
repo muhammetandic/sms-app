@@ -50,7 +50,9 @@ class ProviderImportCoordinator(
             return@withLock 0
         }
 
-        val messages = runCatching { dataSource.queryAllMessages() }
+        // Pass the watermark so the provider applies `_id > watermark` against its
+        // rowid index — an O(new rows) scan instead of O(total history).
+        val messages = runCatching { dataSource.queryAllMessages(afterId = watermark) }
             .onFailure { Log.w(LogTags.STORE, "Provider import query failed", it) }
             .getOrDefault(emptyList())
 

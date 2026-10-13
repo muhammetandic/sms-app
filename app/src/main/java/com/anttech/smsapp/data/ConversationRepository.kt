@@ -192,26 +192,38 @@ class ConversationRepository(
      * group keyed on the sorted normalized members. The display address is the
      * member list as the user typed it, which is what the thread and the
      * notification show.
+     *
+     * Race-safe: [ConversationDao.insertOrIgnore] silently discards a duplicate
+     * insert when two workers (e.g. concurrent multipart delivery) arrive at the
+     * same time. Both then read the same winning row, so neither crashes and
+     * neither produces a phantom conversation.
      */
     internal suspend fun findOrCreateConversation(members: List<String>, timestamp: Long): Long {
         val display = members.map { it.trim() }.filter { it.isNotBlank() }
         if (display.isEmpty()) error("Cannot create a conversation without any recipient")
         val key = AddressNormalizer.groupKey(display)
 
-        conversationDao.getByAddressKey(key)?.let { existing ->
-            if (timestamp > existing.lastMessageAt) {
-                conversationDao.update(existing.copy(lastMessageAt = timestamp))
-            }
-            return existing.id
-        }
-
-        return conversationDao.insert(
+        // Attempt the insert unconditionally. If another coroutine already inserted
+        // the same key the IGNORE policy means this is a no-op; we then fall through
+        // to the read below, which returns the winning row either way.
+        conversationDao.insertOrIgnore(
             ConversationEntity(
                 addressKey = key,
                 displayAddress = display.joinToString(", "),
                 lastMessageAt = timestamp,
             ),
         )
+
+        // This read always succeeds: either we just inserted the row, or a concurrent
+        // worker did — the unique index guarantees exactly one row per key.
+        val conversation = conversationDao.getByAddressKey(key)
+            ?: error("Conversation for key $key missing immediately after insert — should never happen")
+
+        // Push the timestamp forward if the arriving message is newer. The DAO
+        // guard (last_message_at < :lastMessageAt) makes this a no-op for older rows.
+        conversationDao.updateLastMessageAt(conversation.id, timestamp)
+
+        return conversation.id
     }
 
     /** Resolves or creates the conversation for a single address. */
@@ -222,17 +234,12 @@ class ConversationRepository(
      * Adds one to a conversation's unread count after an inbound row is stored,
      * and pulls an archived conversation back into the inbox.
      *
-     * An archived thread is hidden but still ordinary mail, so a reply to one
-     * belongs where the user will see it rather than buried in the archive.
+     * A single UPDATE avoids the read-modify-write race that the old
+     * read → copy() → update pattern had: a second concurrent delivery could
+     * read the same snapshot and both increments would collapse into one.
      */
     internal suspend fun bumpUnread(conversationId: Long) {
-        val conversation = conversationDao.getById(conversationId) ?: return
-        conversationDao.update(
-            conversation.copy(
-                unreadCount = conversation.unreadCount + 1,
-                isArchived = false,
-            ),
-        )
+        conversationDao.incrementUnread(conversationId)
     }
 
     /**

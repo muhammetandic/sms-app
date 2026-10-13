@@ -49,18 +49,24 @@ class RespondViaMessageService : Service() {
                 stopSelf(startId)
             }
 
-            else -> sendReply(recipients.first(), body, startId)
+            else -> sendReply(recipients, body, startId)
         }
 
         return START_NOT_STICKY
     }
 
-    private fun sendReply(recipient: String, body: String, startId: Int) {
+    private fun sendReply(recipients: List<String>, body: String, startId: Int) {
         scope.launch {
+            // Send to every named recipient independently. The RESPOND_VIA_MESSAGE
+            // intent can carry a comma-separated list (e.g. a conference call with
+            // multiple participants). Sending only to the first recipient silently
+            // dropped everyone else.
             try {
-                SendGraph.coordinator(applicationContext).send(recipient, body)
-            } catch (t: Throwable) {
-                Log.e(LogTags.SEND, "Reply from RESPOND_VIA_MESSAGE failed", t)
+                val coordinator = SendGraph.coordinator(applicationContext)
+                recipients.forEach { recipient ->
+                    runCatching { coordinator.send(recipient, body) }
+                        .onFailure { Log.e(LogTags.SEND, "Reply to $recipient from RESPOND_VIA_MESSAGE failed", it) }
+                }
             } finally {
                 stopSelf(startId)
             }

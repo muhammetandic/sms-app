@@ -1,6 +1,7 @@
 package com.anttech.smsapp.sms.receive
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -59,12 +60,17 @@ class MultipartReassemblerTest {
     }
 
     @Test
-    fun `parts with differing timestamps are rejected as not one message`() {
+    fun `parts with differing timestamps are reassembled using the earliest timestamp`() {
+        // Some carriers stamp each PDU as it passes through a relay, so parts of the
+        // same message can have slightly different timestamps. The reassembler should
+        // tolerate this and use the earliest part timestamp as the canonical send-time.
         val result = MultipartReassembler.reassemble(
             listOf(part("+1555", "a", 1_000L), part("+1555", "b", 2_000L)),
         )
 
-        assertNull(result)
+        assertNotNull(result)
+        assertEquals("ab", result!!.body)
+        assertEquals(1_000L, result.timestampMillis)
     }
 
     @Test

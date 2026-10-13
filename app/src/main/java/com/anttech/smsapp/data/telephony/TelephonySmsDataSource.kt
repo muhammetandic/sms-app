@@ -15,7 +15,15 @@ import kotlinx.coroutines.withContext
  * which is unavailable in tests and unavailable entirely without the SMS role.
  */
 interface SmsMessageSource {
-    suspend fun queryAllMessages(limit: Int = 5_000): List<ProviderMessage>
+    /**
+     * SMS rows from the provider with `_id > afterId`, oldest-first.
+     *
+     * Pass 0 (the default) for a full history read on first import. On
+     * incremental runs pass the watermark so only rows that have not been
+     * processed before are returned — turning an O(total history) scan into an
+     * O(new rows) scan.
+     */
+    suspend fun queryAllMessages(limit: Int = 5_000, afterId: Long = 0L): List<ProviderMessage>
 
     /**
      * The highest provider `_id` currently visible, or null when the store is
@@ -96,16 +104,20 @@ class TelephonySmsDataSource(context: Context) : SmsMessageSource {
     }
 
     /**
-     * Every SMS row in the provider, across all threads.
+     * Every SMS row in the provider with `_id > afterId`, across all threads.
      *
      * Rows are read in `_id` order (monotonic with insertion) in pages, with the
      * page size defaulting to the old hard limit so the query stays bounded per
      * round-trip. The loop keeps going until a page comes back short, so a large
      * inbox is imported in full instead of truncating at the first page.
+     *
+     * Passing the watermark as [afterId] turns an incremental import from an
+     * O(total history) scan into an O(new rows) scan: the provider applies the
+     * `_id > afterId` predicate against its rowid index.
      */
-    override suspend fun queryAllMessages(limit: Int): List<ProviderMessage> = withContext(Dispatchers.IO) {
+    override suspend fun queryAllMessages(limit: Int, afterId: Long): List<ProviderMessage> = withContext(Dispatchers.IO) {
         val messages = buildList {
-            var lastSmsId = 0L
+            var lastSmsId = afterId
             while (true) {
                 val page = querySmsPage(lastSmsId, limit)
                 addAll(page)

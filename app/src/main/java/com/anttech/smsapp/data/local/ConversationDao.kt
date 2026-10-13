@@ -66,6 +66,15 @@ interface ConversationDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(conversation: ConversationEntity): Long
 
+    /**
+     * Inserts a conversation row, silently skipping the write if another worker
+     * already inserted the same address_key between our read and this write.
+     * The caller follows up with [getByAddressKey] to obtain the winning row's
+     * id regardless of which insert won.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertOrIgnore(conversation: ConversationEntity): Long
+
     @Update
     suspend fun update(conversation: ConversationEntity)
 
@@ -108,6 +117,15 @@ interface ConversationDao {
      */
     @Query("UPDATE conversations SET unread_count = MAX(unread_count - 1, 0) WHERE id = :id")
     suspend fun decrementUnread(id: Long)
+
+    /**
+     * Increments the unread count by one and, if the conversation was archived,
+     * pulls it back into the inbox so the user sees the new message. A single
+     * UPDATE avoids the read-modify-write race that a Kotlin copy() would
+     * introduce between concurrent deliveries.
+     */
+    @Query("UPDATE conversations SET unread_count = unread_count + 1, is_archived = 0 WHERE id = :id")
+    suspend fun incrementUnread(id: Long)
 
     /**
      * Moves a conversation into or out of the spam folder. Read alongside the

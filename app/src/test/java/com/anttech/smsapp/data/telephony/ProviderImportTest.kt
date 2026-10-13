@@ -312,10 +312,10 @@ class ProviderImportTest {
         var queryCount = 0
             private set
 
-        override suspend fun queryAllMessages(limit: Int): List<ProviderMessage> {
+        override suspend fun queryAllMessages(limit: Int, afterId: Long): List<ProviderMessage> {
             queryCount += 1
             failWith?.let { throw it }
-            return messages
+            return messages.filter { it.id > afterId }
         }
 
         override suspend fun queryMaxMessageId(): Long? {
