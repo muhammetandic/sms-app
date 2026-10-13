@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
 import com.anttech.smsapp.sms.send.SendValidator
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
+import com.anttech.smsapp.ui.theme.iconCommand
 
 class ComposeTestTags {
     companion object {
@@ -138,6 +139,7 @@ fun ComposeScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = backLabel,
+                            tint = MaterialTheme.colorScheme.iconCommand,
                         )
                     }
                 },
@@ -184,6 +186,7 @@ fun ComposeScreen(
                                 Icon(
                                     imageVector = Icons.Filled.Close,
                                     contentDescription = removeRecipientLabel,
+                                    tint = MaterialTheme.colorScheme.iconCommand,
                                     modifier = Modifier
                                         .size(InputChipDefaults.IconSize)
                                         .clickable(enabled = !state.isSending) {
@@ -210,6 +213,7 @@ fun ComposeScreen(
                         Icon(
                             imageVector = Icons.Filled.Add,
                             contentDescription = stringResource(R.string.compose_pick_contact),
+                            tint = MaterialTheme.colorScheme.iconCommand,
                         )
                     }
                 },

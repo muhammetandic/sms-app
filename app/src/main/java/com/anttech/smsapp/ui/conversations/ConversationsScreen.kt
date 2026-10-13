@@ -57,10 +57,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
 import com.anttech.smsapp.ui.components.ConfirmDeleteConversations
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
-import com.anttech.smsapp.ui.theme.DraftsFolderColor
 import com.anttech.smsapp.ui.theme.OnAvatarColor
-import com.anttech.smsapp.ui.theme.SpamFolderColor
 import com.anttech.smsapp.ui.theme.avatarColorFor
+import com.anttech.smsapp.ui.theme.iconCommand
+import com.anttech.smsapp.ui.theme.iconIndicator
+import com.anttech.smsapp.ui.theme.iconSelected
 
 @Composable
 fun ConversationsRoute(
@@ -169,6 +170,7 @@ fun ConversationsScreen(
                             Icon(
                                 imageVector = Icons.Filled.Close,
                                 contentDescription = closeSelectionLabel,
+                                tint = MaterialTheme.colorScheme.iconSelected,
                             )
                         }
                     }
@@ -185,6 +187,7 @@ fun ConversationsScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_spam),
                                 contentDescription = moveToSpamLabel,
+                                tint = MaterialTheme.colorScheme.iconSelected,
                             )
                         }
                         IconButton(onClick = {
@@ -194,6 +197,7 @@ fun ConversationsScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_pin),
                                 contentDescription = if (allPinned) unpinLabel else pinLabel,
+                                tint = MaterialTheme.colorScheme.iconSelected,
                             )
                         }
                         IconButton(onClick = {
@@ -203,12 +207,14 @@ fun ConversationsScreen(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_unread),
                                 contentDescription = markUnreadLabel,
+                                tint = MaterialTheme.colorScheme.iconSelected,
                             )
                         }
                         IconButton(onClick = { pendingDelete = selectedIds }) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_delete),
                                 contentDescription = deleteLabel,
+                                tint = MaterialTheme.colorScheme.iconSelected,
                             )
                         }
                     } else {
@@ -216,26 +222,28 @@ fun ConversationsScreen(
                             Icon(
                                 imageVector = Icons.Filled.Search,
                                 contentDescription = stringResource(R.string.search_title),
+                                tint = MaterialTheme.colorScheme.iconCommand,
                             )
                         }
                         IconButton(onClick = onOpenSpam) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_spam),
                                 contentDescription = stringResource(R.string.spam_open),
-                                tint = SpamFolderColor,
+                                tint = MaterialTheme.colorScheme.iconCommand,
                             )
                         }
                         IconButton(onClick = onOpenDrafts) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_unread),
                                 contentDescription = stringResource(R.string.drafts_open),
-                                tint = DraftsFolderColor,
+                                tint = MaterialTheme.colorScheme.iconCommand,
                             )
                         }
                         IconButton(onClick = onOpenSettings) {
                             Icon(
                                 imageVector = Icons.Filled.Settings,
                                 contentDescription = stringResource(R.string.settings_open),
+                                tint = MaterialTheme.colorScheme.iconCommand,
                             )
                         }
                     }
@@ -443,7 +451,7 @@ internal fun ConversationItem(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_pin),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = MaterialTheme.colorScheme.iconIndicator,
                                 modifier = Modifier.size(14.dp),
                             )
                         }
@@ -454,7 +462,7 @@ internal fun ConversationItem(
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_mute),
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                tint = MaterialTheme.colorScheme.iconIndicator,
                                 modifier = Modifier.size(14.dp),
                             )
                         }

@@ -80,6 +80,7 @@ import com.anttech.smsapp.sms.send.SmsSegments
 import com.anttech.smsapp.ui.TimeFormat
 import com.anttech.smsapp.ui.components.LinkifiedText
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
+import com.anttech.smsapp.ui.theme.iconCommand
 import kotlinx.coroutines.launch
 
 class ThreadTestTags {
@@ -239,6 +240,7 @@ fun ThreadScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = backLabel,
+                            tint = MaterialTheme.colorScheme.iconCommand,
                         )
                     }
                 },
@@ -260,6 +262,7 @@ fun ThreadScreen(
                             contentDescription = stringResource(
                                 if (muted) R.string.thread_unmute else R.string.thread_mute,
                             ),
+                            tint = MaterialTheme.colorScheme.iconCommand,
                         )
                     }
                 },
