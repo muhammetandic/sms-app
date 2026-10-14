@@ -1,6 +1,6 @@
 # sms-app
 
-Android SMS app. Kotlin + Jetpack Compose, `minSdk 30` (Android 11), `compileSdk`/`targetSdk` 36.
+Android SMS app. Kotlin + Jetpack Compose, `minSdk 30` (Android 11), `compileSdk`/`targetSdk` 37.
 
 Sideloaded, not distributed through Play. SMS with dual-SIM send choice, a block list, a drafts screen, and a settings screen. No backend, no cross-device sync.
 
@@ -84,3 +84,9 @@ Two independent stores, because they answer different questions.
 Pure logic (multipart reassembly, dedupe keys, send-result aggregation, address normalization) runs as plain JVM tests. `MessageRepositoryTest` uses Robolectric at SDK 30 to exercise the real Room schema, including the unique-index behavior the dedupe design depends on. `SmsDatabaseMigrationTest` migrates every exported schema in `app/schemas` up to the current version through Room's own migration machinery, validating each result against the current export, and asserts that existing conversation and message rows survive the trip. Room exports its schema to `app/schemas` for migration review; that directory is also wired into the debug variant's assets so Robolectric can feed it to `MigrationTestHelper` (debug-only, the release APK ships no schemas).
 
 Not covered by unit tests: anything touching `SmsManager` or the Telephony provider. Those need a device on a real carrier.
+
+## License
+
+![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)
+
+MIT — see [LICENSE](LICENSE). © 2026 Muhammet Andiç
