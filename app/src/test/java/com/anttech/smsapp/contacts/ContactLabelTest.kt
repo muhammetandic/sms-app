@@ -9,8 +9,8 @@ class ContactLabelTest {
     @Test
     fun `a stored group address splits into its recipients`() {
         assertEquals(
-            listOf("+15551234567", "+905530676691"),
-            "+15551234567, +905530676691".splitAddresses(),
+            listOf("+15551234567", "+15557654321"),
+            "+15551234567, +15557654321".splitAddresses(),
         )
     }
 
@@ -25,7 +25,7 @@ class ContactLabelTest {
         assertEquals(
             "John Doe, Ayşe Yılmaz",
             joinContactLabels(
-                listOf("+15551234567" to "John Doe", "+905530676691" to "Ayşe Yılmaz"),
+                listOf("+15551234567" to "John Doe", "+15557654321" to "Ayşe Yılmaz"),
             ),
         )
     }
@@ -38,15 +38,15 @@ class ContactLabelTest {
     @Test
     fun `an unresolved recipient keeps its number beside the resolved ones`() {
         assertEquals(
-            "John Doe, +905530676691",
-            joinContactLabels(listOf("+15551234567" to "John Doe", "+905530676691" to null)),
+            "John Doe, +15557654321",
+            joinContactLabels(listOf("+15551234567" to "John Doe", "+15557654321" to null)),
         )
     }
 
     @Test
     fun `a group where nothing resolves has no label`() {
         assertNull(
-            joinContactLabels(listOf("+15551234567" to null, "+905530676691" to null)),
+            joinContactLabels(listOf("+15551234567" to null, "+15557654321" to null)),
         )
     }
 

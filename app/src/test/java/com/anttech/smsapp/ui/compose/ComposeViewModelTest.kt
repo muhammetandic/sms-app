@@ -42,31 +42,31 @@ class ComposeViewModelTest {
     fun `picked recipients append and duplicates are ignored`() = runTest(mainDispatcherRule.testDispatcher) {
         val model = viewModel(recipient = "+15551234567")
 
-        model.addRecipient("+905530676691")
+        model.addRecipient("+15557654321")
         model.addRecipient(" +15551234567 ")
 
-        assertEquals("+15551234567, +905530676691", model.uiState.value.recipient)
+        assertEquals("+15551234567, +15557654321", model.uiState.value.recipient)
     }
 
     @Test
     fun `a picked contact keeps its name against the address`() = runTest(mainDispatcherRule.testDispatcher) {
         val model = viewModel(recipient = "")
 
-        model.addRecipient("+905530676691", "Ayşe Yılmaz")
+        model.addRecipient("+15557654321", "Ayşe Yılmaz")
 
         val state = model.uiState.value
-        assertEquals("+905530676691", state.recipient)
-        assertEquals(mapOf("+905530676691" to "Ayşe Yılmaz"), state.recipientNames)
+        assertEquals("+15557654321", state.recipient)
+        assertEquals(mapOf("+15557654321" to "Ayşe Yılmaz"), state.recipientNames)
     }
 
     @Test
     fun `re-adding a picked contact still records its name`() = runTest(mainDispatcherRule.testDispatcher) {
-        val model = viewModel(recipient = "+905530676691")
+        val model = viewModel(recipient = "+15557654321")
 
-        model.addRecipient("+905530676691", "Ayşe Yılmaz")
+        model.addRecipient("+15557654321", "Ayşe Yılmaz")
 
-        assertEquals("+905530676691", model.uiState.value.recipient)
-        assertEquals(mapOf("+905530676691" to "Ayşe Yılmaz"), model.uiState.value.recipientNames)
+        assertEquals("+15557654321", model.uiState.value.recipient)
+        assertEquals(mapOf("+15557654321" to "Ayşe Yılmaz"), model.uiState.value.recipientNames)
     }
 
     @Test
@@ -81,23 +81,23 @@ class ComposeViewModelTest {
     @Test
     fun `removing a recipient drops the address and its name`() = runTest(mainDispatcherRule.testDispatcher) {
         val model = viewModel(recipient = "+15551234567")
-        model.addRecipient("+905530676691", "Ayşe Yılmaz")
+        model.addRecipient("+15557654321", "Ayşe Yılmaz")
 
         model.removeRecipient("+15551234567")
 
         val state = model.uiState.value
-        assertEquals("+905530676691", state.recipient)
-        assertEquals(mapOf("+905530676691" to "Ayşe Yılmaz"), state.recipientNames)
+        assertEquals("+15557654321", state.recipient)
+        assertEquals(mapOf("+15557654321" to "Ayşe Yılmaz"), state.recipientNames)
     }
 
     @Test
     fun `committing the typed field turns it into a recipient`() = runTest(mainDispatcherRule.testDispatcher) {
         val model = viewModel(recipient = "")
 
-        model.onRecipientInputChanged("+905530676691")
+        model.onRecipientInputChanged("+15557654321")
         model.commitRecipientInput()
 
-        assertEquals("+905530676691", model.uiState.value.recipient)
+        assertEquals("+15557654321", model.uiState.value.recipient)
         assertEquals("", model.uiState.value.recipientInput)
     }
 
@@ -105,11 +105,11 @@ class ComposeViewModelTest {
     fun `a pasted run of separators becomes separate recipients`() = runTest(mainDispatcherRule.testDispatcher) {
         val model = viewModel(recipient = "")
 
-        model.onRecipientInputChanged("+15551234567, +905530676691;+15559876543")
+        model.onRecipientInputChanged("+15551234567, +15557654321;+15559876543")
         model.commitRecipientInput()
 
         assertEquals(
-            "+15551234567, +905530676691, +15559876543",
+            "+15551234567, +15557654321, +15559876543",
             model.uiState.value.recipient,
         )
         assertEquals("", model.uiState.value.recipientInput)
@@ -143,8 +143,8 @@ class ComposeViewModelTest {
     @Test
     fun `recipient addresses drop blank entries`() {
         assertEquals(
-            listOf("+15551234567", "+905530676691"),
-            recipientAddresses("+15551234567,  , +905530676691, "),
+            listOf("+15551234567", "+15557654321"),
+            recipientAddresses("+15551234567,  , +15557654321, "),
         )
         assertEquals(emptyList<String>(), recipientAddresses("   "))
     }

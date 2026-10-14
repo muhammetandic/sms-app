@@ -19,16 +19,16 @@ class ComposeIntentParserTest {
     @Test
     fun `percent encoded contact recipient is decoded`() {
         assertEquals(
-            listOf("+90 553 067 66 91"),
-            ComposeIntentParser.recipientsFrom("smsto:%2B90%20553%20067%2066%2091"),
+            listOf("+1 555 765 4321"),
+            ComposeIntentParser.recipientsFrom("smsto:%2B1%20555%20765%204321"),
         )
     }
 
     @Test
     fun `literal plus in recipient remains plus`() {
         assertEquals(
-            listOf("+905530676691"),
-            ComposeIntentParser.recipientsFrom("smsto:+905530676691"),
+            listOf("+15557654321"),
+            ComposeIntentParser.recipientsFrom("smsto:+15557654321"),
         )
     }
 
