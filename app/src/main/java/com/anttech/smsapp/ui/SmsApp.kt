@@ -17,6 +17,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -28,6 +29,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.launch
+import com.anttech.smsapp.R
 import com.anttech.smsapp.data.DataGraph
 import com.anttech.smsapp.permission.PermissionSetup
 import com.anttech.smsapp.permission.SmsPermissions
@@ -191,6 +193,11 @@ private fun SmsNavHost(
     roleHeldNow: Boolean,
 ) {
     val context = LocalContext.current
+    // Resolved here, at the one place with a Composable context, then handed to
+    // the list ViewModels. They format timestamps on a background dispatcher and
+    // so cannot reach a resource themselves; without this the conversation lists
+    // fall back to the hardcoded English "Yesterday" even on a Turkish device.
+    val yesterdayLabel = stringResource(R.string.date_yesterday)
     val navigationScope = rememberCoroutineScope()
     val dataGraph = DataGraph.get(context)
     val repository = dataGraph.messageRepository
@@ -256,6 +263,7 @@ private fun SmsNavHost(
                     // the moment its alert has served its purpose, so the batch
                     // actions dismiss the notifications along with the badges.
                     cancelNotification = { ids -> ids.forEach { cancelConversationNotification(context, it) } },
+                    yesterdayLabel = yesterdayLabel,
                 ),
             )
             ConversationsRoute(
@@ -391,7 +399,7 @@ private fun SmsNavHost(
         // and neither list can hold a row the other still claims.
         composable(Routes.SPAM) {
             val viewModel: SpamViewModel = viewModel(
-                factory = SpamViewModel.factory(conversationRepository, contactNames),
+                factory = SpamViewModel.factory(conversationRepository, contactNames, yesterdayLabel),
             )
             SpamRoute(
                 viewModel = viewModel,
@@ -409,7 +417,7 @@ private fun SmsNavHost(
         // returns it to the inbox on its own.
         composable(Routes.ARCHIVE) {
             val viewModel: ArchiveViewModel = viewModel(
-                factory = ArchiveViewModel.factory(conversationRepository, contactNames),
+                factory = ArchiveViewModel.factory(conversationRepository, contactNames, yesterdayLabel),
             )
             ArchiveRoute(
                 viewModel = viewModel,
@@ -422,7 +430,7 @@ private fun SmsNavHost(
 
         composable(Routes.DRAFTS) {
             val viewModel: DraftsViewModel = viewModel(
-                factory = DraftsViewModel.factory(repository, contactNames),
+                factory = DraftsViewModel.factory(repository, contactNames, yesterdayLabel),
             )
             DraftsRoute(
                 viewModel = viewModel,
@@ -452,7 +460,7 @@ private fun SmsNavHost(
 
         composable(Routes.SEARCH) {
             val viewModel: SearchViewModel = viewModel(
-                factory = SearchViewModel.factory(repository, conversationRepository, contactNames::displayLabel),
+                factory = SearchViewModel.factory(repository, conversationRepository, contactNames::displayLabel, yesterdayLabel),
             )
             SearchRoute(
                 viewModel = viewModel,

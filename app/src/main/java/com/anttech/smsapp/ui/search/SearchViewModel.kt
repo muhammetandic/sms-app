@@ -52,6 +52,13 @@ class SearchViewModel(
     private val repository: MessageRepository,
     private val conversationRepository: ConversationRepository,
     private val resolveName: suspend (String) -> String?,
+    /**
+     * Resource-resolved stand-in for the hardcoded "Yesterday" that
+     * [TimeFormat.conversationTimestamp] falls back to. Injected rather than read
+     * from a Context so the ViewModel stays free of framework services; the
+     * default only exists for tests.
+     */
+    private val yesterdayLabel: String = "Yesterday",
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
@@ -89,7 +96,7 @@ class SearchViewModel(
                 title = resolveName(hit.displayAddress) ?: hit.displayAddress,
                 address = hit.displayAddress,
                 snippet = hit.body,
-                timestampLabel = TimeFormat.conversationTimestamp(hit.sentAt),
+                timestampLabel = TimeFormat.conversationTimestamp(hit.sentAt, yesterdayLabel = yesterdayLabel),
                 sentAt = hit.sentAt,
                 messageId = hit.messageId,
             )
@@ -109,7 +116,7 @@ class SearchViewModel(
                     title = title,
                     address = conversation.displayAddress,
                     snippet = conversation.snippet.orEmpty(),
-                    timestampLabel = TimeFormat.conversationTimestamp(conversation.lastMessageAt),
+                    timestampLabel = TimeFormat.conversationTimestamp(conversation.lastMessageAt, yesterdayLabel = yesterdayLabel),
                     sentAt = conversation.lastMessageAt,
                     messageId = null,
                 )
@@ -128,10 +135,11 @@ class SearchViewModel(
             repository: MessageRepository,
             conversationRepository: ConversationRepository,
             resolveName: suspend (String) -> String?,
+            yesterdayLabel: String,
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                SearchViewModel(repository, conversationRepository, resolveName) as T
+                SearchViewModel(repository, conversationRepository, resolveName, yesterdayLabel) as T
         }
     }
 }

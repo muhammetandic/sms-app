@@ -35,6 +35,10 @@ class SearchViewModelTest {
     private lateinit var database: SmsDatabase
     private lateinit var repository: MessageRepository
 
+    private companion object {
+        const val ONE_DAY_MILLIS = 86_400_000L
+    }
+
     @Before
     fun setUp() {
         database = inlineInMemoryDatabase(
@@ -47,10 +51,14 @@ class SearchViewModelTest {
     @After
     fun tearDown() = database.close()
 
-    private fun viewModel(resolveName: suspend (String) -> String? = { null }) = SearchViewModel(
+    private fun viewModel(
+        resolveName: suspend (String) -> String? = { null },
+        yesterdayLabel: String = "Yesterday",
+    ) = SearchViewModel(
         repository = repository,
         conversationRepository = repository.conversations,
         resolveName = resolveName,
+        yesterdayLabel = yesterdayLabel,
         dispatcher = mainDispatcherRule.testDispatcher,
     )
 
@@ -77,6 +85,20 @@ class SearchViewModelTest {
         assertEquals("dinner at eight", result.snippet)
         assertEquals("+15551234567", result.address)
         assertNotNull("a body hit points at the matching row", result.messageId)
+    }
+
+    @Test
+    fun `a yesterday hit is labelled with the injected localized string`() = runTest(mainDispatcherRule.testDispatcher) {
+        // Both result paths (a message hit and a name-only conversation hit)
+        // format through the same injected label; a day back is yesterday in any
+        // timezone, so the clock need not be pinned.
+        givenMessage("+15551234567", "dinner at eight", System.currentTimeMillis() - ONE_DAY_MILLIS)
+        val model = viewModel(yesterdayLabel = "Dün")
+
+        model.onQueryChange("dinner")
+
+        val result = model.results.first { it.isNotEmpty() }.single()
+        assertEquals("Dün", result.timestampLabel)
     }
 
     @Test

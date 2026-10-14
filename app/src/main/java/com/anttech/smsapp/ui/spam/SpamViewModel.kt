@@ -30,6 +30,13 @@ import kotlinx.coroutines.launch
 class SpamViewModel(
     private val repository: ConversationRepository,
     private val contactNames: ContactNameResolver? = null,
+    /**
+     * Resource-resolved stand-in for the hardcoded "Yesterday" that
+     * [TimeFormat.conversationTimestamp] falls back to. Injected rather than read
+     * from a Context so the ViewModel stays free of framework services; the
+     * default only exists for tests.
+     */
+    private val yesterdayLabel: String = "Yesterday",
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
@@ -94,7 +101,7 @@ class SpamViewModel(
         address = displayAddress.ifBlank { addressKey },
         displayName = resolvedName,
         snippet = snippet.orEmpty(),
-        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt),
+        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel),
         // Marking as spam clears the unread count in the same write, so a row
         // that reaches this screen is read unless a later message arrived.
         unreadCount = unreadCount,
@@ -106,10 +113,11 @@ class SpamViewModel(
         fun factory(
             repository: ConversationRepository,
             contactNames: ContactNameResolver? = null,
+            yesterdayLabel: String,
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                SpamViewModel(repository, contactNames) as T
+                SpamViewModel(repository, contactNames, yesterdayLabel) as T
         }
     }
 }

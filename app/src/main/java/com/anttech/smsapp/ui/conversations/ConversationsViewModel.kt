@@ -58,6 +58,14 @@ class ConversationsViewModel(
      * and a test can observe the call.
      */
     private val cancelNotification: (Set<Long>) -> Unit = {},
+    /**
+     * Resource-resolved stand-in for the hardcoded "Yesterday" that
+     * [TimeFormat.conversationTimestamp] falls back to. A plain value rather than
+     * a Context keeps the ViewModel free of framework services; the default only
+     * lets tests build one without a resource bundle, so production always passes
+     * the translated string from the NavHost.
+     */
+    private val yesterdayLabel: String = "Yesterday",
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
@@ -182,7 +190,7 @@ class ConversationsViewModel(
         address = displayAddress.ifBlank { addressKey },
         displayName = resolvedName,
         snippet = snippet.orEmpty(),
-        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt),
+        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel),
         unreadCount = unreadCount,
         isPinned = isPinned,
         isMuted = isMuted,
@@ -197,10 +205,17 @@ class ConversationsViewModel(
             isSmsRoleHeld: () -> Boolean,
             contactNames: ContactNameResolver? = null,
             cancelNotification: (Set<Long>) -> Unit = {},
+            yesterdayLabel: String,
         ) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                ConversationsViewModel(repository, isSmsRoleHeld, contactNames, cancelNotification) as T
+                ConversationsViewModel(
+                    repository,
+                    isSmsRoleHeld,
+                    contactNames,
+                    cancelNotification,
+                    yesterdayLabel,
+                ) as T
         }
     }
 }

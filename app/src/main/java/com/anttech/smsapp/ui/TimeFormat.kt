@@ -17,7 +17,15 @@ object TimeFormat {
     private val dayAndMonth: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")
     private val dayAndYear: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy")
 
-    /** Short label for a conversation row: time today, otherwise a date. */
+    /**
+     * Short label for a conversation row: time today, otherwise a date.
+     *
+     * [todayLabel] overrides the time-of-day shown for today when a caller wants
+     * the "Today" word instead; [yesterdayLabel] is the localised form of the
+     * hardcoded default and is what the conversation lists pass in, so a Turkish
+     * device reads "Dün" rather than "Yesterday". The defaults keep plain-JVM
+     * tests working without a resource context.
+     */
     fun conversationTimestamp(
         timestampMillis: Long,
         nowMillis: Long = System.currentTimeMillis(),

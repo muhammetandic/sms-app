@@ -30,6 +30,10 @@ class ConversationsViewModelTest {
     // surfaces that work in whole conversations.
     private val conversations get() = repository.conversations
 
+    private companion object {
+        const val ONE_DAY_MILLIS = 86_400_000L
+    }
+
     @Before
     fun setUp() {
         database = inlineInMemoryDatabase(
@@ -145,6 +149,24 @@ class ConversationsViewModelTest {
         assertEquals("+15550000001", row.address)
         assertEquals(1, row.unreadCount)
         assertTrue(row.timestampLabel.isNotBlank())
+    }
+
+    @Test
+    fun `a yesterday timestamp is labelled with the injected localized string`() = runTest(mainDispatcherRule.testDispatcher) {
+        // A day back is "yesterday" in any timezone, so the label is exercised
+        // without pinning the clock. The point is that the row shows the
+        // resource-resolved string rather than the formatter's English default,
+        // which is what a Turkish device was rendering.
+        givenInbound("+15550000001", "dun gelen", System.currentTimeMillis() - ONE_DAY_MILLIS)
+
+        val row = ConversationsViewModel(
+            conversations,
+            { true },
+            yesterdayLabel = "Dün",
+            dispatcher = mainDispatcherRule.testDispatcher,
+        ).uiState.first { !it.isLoading }.conversations.single()
+
+        assertEquals("Dün", row.timestampLabel)
     }
 
     @Test

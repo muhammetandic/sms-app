@@ -27,6 +27,13 @@ data class DraftsUiState(
 class DraftsViewModel(
     private val repository: MessageRepository,
     private val contactNames: ContactNameResolver? = null,
+    /**
+     * Resource-resolved stand-in for the hardcoded "Yesterday" that
+     * [TimeFormat.conversationTimestamp] falls back to. Injected rather than read
+     * from a Context so the ViewModel stays free of framework services; the
+     * default only exists for tests.
+     */
+    private val yesterdayLabel: String = "Yesterday",
     private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
@@ -67,16 +74,19 @@ class DraftsViewModel(
         address = displayAddress.ifBlank { addressKey },
         displayName = name,
         snippet = body,
-        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt),
+        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel),
         unreadCount = 0,
     )
 
     companion object {
-        fun factory(repository: MessageRepository, contactNames: ContactNameResolver? = null) =
-            object : ViewModelProvider.Factory {
-                @Suppress("UNCHECKED_CAST")
-                override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                    DraftsViewModel(repository, contactNames) as T
-            }
+        fun factory(
+            repository: MessageRepository,
+            contactNames: ContactNameResolver? = null,
+            yesterdayLabel: String,
+        ) = object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                DraftsViewModel(repository, contactNames, yesterdayLabel) as T
+        }
     }
 }
