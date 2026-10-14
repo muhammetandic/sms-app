@@ -218,7 +218,13 @@ fun ConversationsScreen(
                 },
                 actions = {
                     if (isSelecting) {
-                        val selectedRows = state.conversations.filter { it.id in selectedIds }
+                        // Recomputed only when the selection or the list changes:
+                        // this sits in the app bar's composition, and filtering
+                        // the whole store on every unrelated recomposition (a menu
+                        // opening, a snackbar, the dialog) was pure waste.
+                        val selectedRows = remember(state.conversations, selectedIds) {
+                            state.conversations.filter { it.id in selectedIds }
+                        }
                         // All pinned flips to unpin; a mixed or unpinned batch pins.
                         val allPinned = selectedRows.isNotEmpty() && selectedRows.all { it.isPinned }
                         IconButton(onClick = {

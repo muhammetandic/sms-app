@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
+import android.os.SystemClock
 import android.provider.ContactsContract
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,14 @@ class ContactNameResolver(context: Context) {
     private val cache = HashMap<String, String?>()
 
     /**
+     * Uptime of the last [preload], or far enough in the past that the first one
+     * always runs. Best-effort: two callers racing the check can each run once,
+     * which only repeats an idempotent write into [cache].
+     */
+    @Volatile
+    private var lastPreloadElapsed: Long = -PRELOAD_THROTTLE_MILLIS
+
+    /**
      * Loads the phone/name index in one provider query. The conversation list
      * often needs several names at once; issuing one PhoneLookup query per row
      * makes the first frame show numbers and leaves the list visibly catching
@@ -34,6 +43,17 @@ class ContactNameResolver(context: Context) {
      */
     suspend fun preload() = withContext(Dispatchers.IO) {
         if (!hasPermission()) return@withContext
+
+        // The inbox re-resolves on every resume and each folder on entry, so this
+        // is asked for far more often than contacts change. A full
+        // Phone.CONTENT_URI read plus a normalize per number is real work on a
+        // large address book, so a run inside this window is skipped: a contact
+        // saved a moment ago is picked up on the next resume instead of the whole
+        // table being re-read on every screen transition. The window is short
+        // enough that a name the user just added still lands promptly.
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastPreloadElapsed < PRELOAD_THROTTLE_MILLIS) return@withContext
+        lastPreloadElapsed = now
 
         runCatching {
             resolver.query(
@@ -67,20 +87,26 @@ class ContactNameResolver(context: Context) {
      * Display name for [address], or null when no contact matches or the
      * contacts permission is not held.
      */
-    suspend fun displayName(address: String): String? = withContext(Dispatchers.IO) {
+    suspend fun displayName(address: String): String? {
         val key = address.trim()
-        if (key.isEmpty()) return@withContext null
+        if (key.isEmpty()) return null
 
         // A cached null is a real answer: that number has no contact. Retrying
         // every scroll would repeat a query that is known to return nothing.
         val normalizedKey = ContactAddressNormalizer.normalize(key)
         synchronized(cache) {
-            if (cache.containsKey(normalizedKey)) return@withContext cache[normalizedKey]
+            if (cache.containsKey(normalizedKey)) return cache[normalizedKey]
         }
 
-        val name = runCatching { queryDisplayName(key) }.getOrNull()
-        synchronized(cache) { cache[normalizedKey] = name }
-        name
+        // Only a miss reaches the provider, so only a miss needs moving off the
+        // caller's thread. A hit returns on the current one: the phrase search
+        // resolves a name per conversation, and dispatching hundreds of cache
+        // hits would cost more than the lookups they avoid.
+        return withContext(Dispatchers.IO) {
+            val name = runCatching { queryDisplayName(key) }.getOrNull()
+            synchronized(cache) { cache[normalizedKey] = name }
+            name
+        }
     }
 
     /**
@@ -153,6 +179,11 @@ class ContactNameResolver(context: Context) {
     private fun Cursor.stringOrNull(column: String): String? {
         val index = getColumnIndex(column)
         return if (index < 0 || isNull(index)) null else getString(index)
+    }
+
+    private companion object {
+        /** Contacts change rarely; a re-read this soon after the last is skipped. */
+        const val PRELOAD_THROTTLE_MILLIS = 5_000L
     }
 }
 

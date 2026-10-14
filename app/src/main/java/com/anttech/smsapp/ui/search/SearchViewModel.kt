@@ -88,15 +88,30 @@ class SearchViewModel(
 
     /** Body matches first; then conversations whose name alone matched. */
     private suspend fun buildResults(query: String, hits: List<MessageSearchHit>): List<SearchResult> {
+        // One zone for every timestamp in the batch; see [TimeFormat.defaultZone].
+        val zone = TimeFormat.defaultZone()
+
+        // A name is a provider lookup on the first address and a cache hit after
+        // that, but one address can back several matched messages and the scan
+        // below touches every conversation in the store. Resolving each address
+        // once keeps a busy inbox from repeating the lookup per row.
+        val titles = HashMap<String, String>()
+        suspend fun titleOf(address: String): String {
+            titles[address]?.let { return it }
+            val resolved = resolveName(address) ?: address
+            titles[address] = resolved
+            return resolved
+        }
+
         val matchedConversationIds = mutableSetOf<Long>()
         val found = hits.map { hit ->
             matchedConversationIds += hit.conversationId
             SearchResult(
                 conversationId = hit.conversationId,
-                title = resolveName(hit.displayAddress) ?: hit.displayAddress,
+                title = titleOf(hit.displayAddress),
                 address = hit.displayAddress,
                 snippet = hit.body,
-                timestampLabel = TimeFormat.conversationTimestamp(hit.sentAt, yesterdayLabel = yesterdayLabel),
+                timestampLabel = TimeFormat.conversationTimestamp(hit.sentAt, yesterdayLabel = yesterdayLabel, zone = zone),
                 sentAt = hit.sentAt,
                 messageId = hit.messageId,
             )
@@ -107,7 +122,7 @@ class SearchViewModel(
         // results rather than filtered by them.
         for (conversation in conversationRepository.observeConversations().first()) {
             if (conversation.id in matchedConversationIds) continue
-            val title = resolveName(conversation.displayAddress) ?: conversation.displayAddress
+            val title = titleOf(conversation.displayAddress)
             if (title.contains(query, ignoreCase = true) ||
                 conversation.displayAddress.contains(query, ignoreCase = true)
             ) {
@@ -116,7 +131,7 @@ class SearchViewModel(
                     title = title,
                     address = conversation.displayAddress,
                     snippet = conversation.snippet.orEmpty(),
-                    timestampLabel = TimeFormat.conversationTimestamp(conversation.lastMessageAt, yesterdayLabel = yesterdayLabel),
+                    timestampLabel = TimeFormat.conversationTimestamp(conversation.lastMessageAt, yesterdayLabel = yesterdayLabel, zone = zone),
                     sentAt = conversation.lastMessageAt,
                     messageId = null,
                 )

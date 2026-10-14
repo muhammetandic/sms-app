@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 
 /**
  * State for the conversation list.
@@ -83,9 +84,11 @@ class ConversationsViewModel(
         roleHeld,
         resolvedNames,
     ) { summaries, roleIsHeld, names ->
+        // One zone for the whole list; see [TimeFormat.defaultZone].
+        val zone = TimeFormat.defaultZone()
         ConversationsUiState(
             conversations = summaries.map { summary ->
-                summary.toRow(names[summary.addressKey])
+                summary.toRow(names[summary.addressKey], zone)
             },
             isLoading = false,
             isReadOnly = !roleIsHeld,
@@ -185,12 +188,12 @@ class ConversationsViewModel(
         viewModelScope.launch { repository.setConversationsSpam(ids, isSpam = false) }
     }
 
-    private fun ConversationSummary.toRow(resolvedName: String?) = ConversationRow(
+    private fun ConversationSummary.toRow(resolvedName: String?, zone: ZoneId) = ConversationRow(
         id = id,
         address = displayAddress.ifBlank { addressKey },
         displayName = resolvedName,
         snippet = snippet.orEmpty(),
-        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel),
+        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel, zone = zone),
         unreadCount = unreadCount,
         isPinned = isPinned,
         isMuted = isMuted,

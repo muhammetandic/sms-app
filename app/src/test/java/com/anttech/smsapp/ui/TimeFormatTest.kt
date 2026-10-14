@@ -6,7 +6,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.util.Locale
 
@@ -109,5 +111,28 @@ class TimeFormatTest {
         val moment = at(2026, 3, 14, 12, 0)
 
         assertTrue(TimeFormat.isSameDay(moment, moment))
+    }
+
+    @Test
+    fun `the given zone decides the day, not the device zone`() {
+        // The same two instants are on different days in UTC but the same day in
+        // +02:00. Passing the zone has to actually move the boundary, or a caller
+        // that batches a thread's timestamps would silently format them in the
+        // device zone instead.
+        val earlier = Instant.parse("2026-03-14T23:30:00Z").toEpochMilli()
+        val later = Instant.parse("2026-03-15T00:30:00Z").toEpochMilli()
+
+        assertFalse(TimeFormat.isSameDay(earlier, later, ZoneOffset.UTC))
+        assertTrue(TimeFormat.isSameDay(earlier, later, ZoneOffset.ofHours(2)))
+    }
+
+    @Test
+    fun `conversation timestamp formats in the zone it is given`() {
+        val now = Instant.parse("2026-03-15T00:30:00Z").toEpochMilli()
+        val message = Instant.parse("2026-03-14T23:30:00Z").toEpochMilli()
+
+        // Yesterday in UTC, but still today once the same instant is read in +02:00.
+        assertEquals("Yesterday", TimeFormat.conversationTimestamp(message, now, zone = ZoneOffset.UTC))
+        assertEquals("01:30", TimeFormat.conversationTimestamp(message, now, zone = ZoneOffset.ofHours(2)))
     }
 }

@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 
 /**
  * The archive: conversations the user hid from the inbox without
@@ -49,8 +50,10 @@ class ArchiveViewModel(
         repository.observeArchivedConversations(),
         resolvedNames,
     ) { summaries, names ->
+        // One zone for the whole folder; see [TimeFormat.defaultZone].
+        val zone = TimeFormat.defaultZone()
         FolderUiState(
-            conversations = summaries.map { summary -> summary.toArchiveRow(names[summary.addressKey]) },
+            conversations = summaries.map { summary -> summary.toArchiveRow(names[summary.addressKey], zone) },
             isLoading = false,
         )
         // Row building formats a timestamp per conversation; keep it off
@@ -100,12 +103,12 @@ class ArchiveViewModel(
         viewModelScope.launch { repository.deleteConversations(ids) }
     }
 
-    private fun ConversationSummary.toArchiveRow(resolvedName: String?) = ConversationRow(
+    private fun ConversationSummary.toArchiveRow(resolvedName: String?, zone: ZoneId) = ConversationRow(
         id = id,
         address = displayAddress.ifBlank { addressKey },
         displayName = resolvedName,
         snippet = snippet.orEmpty(),
-        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel),
+        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel, zone = zone),
         // Archiving leaves the unread count in place, so a row that
         // reaches this screen may still carry the badge it earned
         // before it was hidden.

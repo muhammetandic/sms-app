@@ -22,8 +22,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 
 data class ThreadUiState(
     val messages: List<MessageBubble> = emptyList(),
@@ -85,14 +87,31 @@ class ThreadViewModel(
 
     private val messages: Flow<List<MessageEntity>> = repository.observeMessages(conversationId)
 
+    /**
+     * The thread's messages mapped to display rows, once per store emission.
+     *
+     * Kept out of [uiState]'s transform on purpose. Combining the bubble mapping
+     * with the environment inputs (the role, the in-flight send, the mute flag)
+     * re-mapped - and re-formatted the timestamp of - every message whenever any
+     * of them flipped, so a send turned into a full rebuild of a long thread
+     * twice over for a change that touches no message. The bubbles only change
+     * when the store does.
+     */
+    private val bubbles: Flow<List<MessageBubble>> = messages.map { stored ->
+        // One zone for the batch: resolving it per message would copy the
+        // default TimeZone a message at a time on a long thread.
+        val zone = TimeFormat.defaultZone()
+        stored.map { it.toBubble(zone) }
+    }
+
     val uiState: StateFlow<ThreadUiState> = combine(
-        messages,
+        bubbles,
         combine(roleHeld, sending, lastFailure, muted) { role, isSending, failure, mutedConversation ->
             ThreadEnvironment(role, isSending, failure, mutedConversation)
         },
-    ) { messages, env ->
+    ) { bubbles, env ->
         ThreadUiState(
-            messages = messages.map { it.toBubble() },
+            messages = bubbles,
             isReadOnly = !env.roleHeld,
             isSending = env.isSending,
             lastFailure = env.failure,
@@ -102,11 +121,10 @@ class ThreadViewModel(
             canSend = env.roleHeld && recipient.isNotBlank(),
             isMuted = env.isMuted,
         )
-        // Every store emission rebuilds the whole thread's bubbles and formats
-        // each timestamp, and viewModelScope would do that on the main thread on
-        // the frame that draws it. A long thread pays that cost per message, so
-        // the mapping is pushed onto a background dispatcher; the screen only
-        // ever sees the finished state.
+        // Bubbles are built upstream, but the combine and its timestamp
+        // formatting would still run on the main thread through viewModelScope.
+        // The whole chain is pushed onto a background dispatcher so the screen
+        // only ever sees the finished state.
     }.flowOn(dispatcher).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
@@ -216,10 +234,10 @@ class ThreadViewModel(
         viewModelScope.launch { repository.deleteMessage(messageId) }
     }
 
-    private fun MessageEntity.toBubble() = MessageBubble(
+    private fun MessageEntity.toBubble(zone: ZoneId) = MessageBubble(
         id = id,
         body = body,
-        timestampLabel = TimeFormat.messageTimestamp(sentAt),
+        timestampLabel = TimeFormat.messageTimestamp(sentAt, zone = zone),
         isOutgoing = direction == MessageDirection.OUTGOING,
         status = status,
         sentAt = sentAt,

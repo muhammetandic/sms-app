@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 
 data class DraftsUiState(
     val conversations: List<ConversationRow> = emptyList(),
@@ -43,8 +44,10 @@ class DraftsViewModel(
         repository.observeDraftConversations(),
         resolvedNames,
     ) { drafts, names ->
+        // One zone for the whole folder; see [TimeFormat.defaultZone].
+        val zone = TimeFormat.defaultZone()
         DraftsUiState(
-            conversations = drafts.map { it.toRow(names[it.addressKey]) },
+            conversations = drafts.map { it.toRow(names[it.addressKey], zone) },
             isLoading = false,
         )
         // Row building formats a timestamp per draft; keep it off the main thread
@@ -69,12 +72,12 @@ class DraftsViewModel(
         viewModelScope.launch { repository.deleteDraft(draftId) }
     }
 
-    private fun DraftConversationSummary.toRow(name: String?) = ConversationRow(
+    private fun DraftConversationSummary.toRow(name: String?, zone: ZoneId) = ConversationRow(
         id = draftId,
         address = displayAddress.ifBlank { addressKey },
         displayName = name,
         snippet = body,
-        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel),
+        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel, zone = zone),
         unreadCount = 0,
     )
 

@@ -18,21 +18,32 @@ object TimeFormat {
     private val dayAndYear: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM yyyy")
 
     /**
+     * The device zone, read once by a caller that formats a batch of timestamps.
+     *
+     * [ZoneId.systemDefault] is not free: it resolves and copies the default
+     * `TimeZone` on every call, and a thread or inbox formats one timestamp per
+     * row. Callers that loop resolve it here once and pass it in as `zone`, so
+     * the whole batch shares one lookup instead of one per row.
+     */
+    fun defaultZone(): ZoneId = ZoneId.systemDefault()
+
+    /**
      * Short label for a conversation row: time today, otherwise a date.
      *
      * [todayLabel] overrides the time-of-day shown for today when a caller wants
      * the "Today" word instead; [yesterdayLabel] is the localised form of the
      * hardcoded default and is what the conversation lists pass in, so a Turkish
      * device reads "Dün" rather than "Yesterday". The defaults keep plain-JVM
-     * tests working without a resource context.
+     * tests working without a resource context. [zone] defaults to the device
+     * zone for a single call; a caller formatting a whole list passes one in.
      */
     fun conversationTimestamp(
         timestampMillis: Long,
         nowMillis: Long = System.currentTimeMillis(),
         todayLabel: String? = null,
         yesterdayLabel: String = "Yesterday",
+        zone: ZoneId = ZoneId.systemDefault(),
     ): String {
-        val zone = ZoneId.systemDefault()
         val moment = Instant.ofEpochMilli(timestampMillis).atZone(zone)
         val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
 
@@ -48,8 +59,11 @@ object TimeFormat {
     }
 
     /** Full timestamp shown inside a thread. */
-    fun messageTimestamp(timestampMillis: Long, nowMillis: Long = System.currentTimeMillis()): String {
-        val zone = ZoneId.systemDefault()
+    fun messageTimestamp(
+        timestampMillis: Long,
+        nowMillis: Long = System.currentTimeMillis(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): String {
         val moment = Instant.ofEpochMilli(timestampMillis).atZone(zone)
         val now = Instant.ofEpochMilli(nowMillis).atZone(zone)
 
@@ -72,8 +86,8 @@ object TimeFormat {
         nowMillis: Long = System.currentTimeMillis(),
         todayLabel: String = "Today",
         yesterdayLabel: String = "Yesterday",
+        zone: ZoneId = ZoneId.systemDefault(),
     ): String {
-        val zone = ZoneId.systemDefault()
         val date = Instant.ofEpochMilli(timestampMillis).atZone(zone).toLocalDate()
         val today = Instant.ofEpochMilli(nowMillis).atZone(zone).toLocalDate()
 
@@ -86,8 +100,11 @@ object TimeFormat {
     }
 
     /** True when the message is recent enough to group under a single day header. */
-    fun isSameDay(firstMillis: Long, secondMillis: Long): Boolean {
-        val zone = ZoneId.systemDefault()
+    fun isSameDay(
+        firstMillis: Long,
+        secondMillis: Long,
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): Boolean {
         val first = Instant.ofEpochMilli(firstMillis).atZone(zone).toLocalDate()
         val second = Instant.ofEpochMilli(secondMillis).atZone(zone).toLocalDate()
         return first == second

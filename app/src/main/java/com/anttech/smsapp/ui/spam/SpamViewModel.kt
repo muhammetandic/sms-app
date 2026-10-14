@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import java.time.ZoneId
 
 /**
  * The spam folder: the conversations the user moved out of the inbox.
@@ -46,8 +47,10 @@ class SpamViewModel(
         repository.observeSpamConversations(),
         resolvedNames,
     ) { summaries, names ->
+        // One zone for the whole folder; see [TimeFormat.defaultZone].
+        val zone = TimeFormat.defaultZone()
         FolderUiState(
-            conversations = summaries.map { summary -> summary.toSpamRow(names[summary.addressKey]) },
+            conversations = summaries.map { summary -> summary.toSpamRow(names[summary.addressKey], zone) },
             isLoading = false,
         )
         // Row building formats a timestamp per conversation; keep it off the main
@@ -96,12 +99,12 @@ class SpamViewModel(
         viewModelScope.launch { repository.deleteConversations(ids) }
     }
 
-    private fun ConversationSummary.toSpamRow(resolvedName: String?) = ConversationRow(
+    private fun ConversationSummary.toSpamRow(resolvedName: String?, zone: ZoneId) = ConversationRow(
         id = id,
         address = displayAddress.ifBlank { addressKey },
         displayName = resolvedName,
         snippet = snippet.orEmpty(),
-        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel),
+        timestampLabel = TimeFormat.conversationTimestamp(lastMessageAt, yesterdayLabel = yesterdayLabel, zone = zone),
         // Marking as spam clears the unread count in the same write, so a row
         // that reaches this screen is read unless a later message arrived.
         unreadCount = unreadCount,

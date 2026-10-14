@@ -63,6 +63,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
@@ -409,46 +410,54 @@ private fun MessageList(
     val listState = rememberLazyListState()
     var hasInitialPosition by remember { mutableStateOf(false) }
 
-    // New messages arrive at the end. Scrolling to the latest one keeps the
-    // newest content visible without yanking the user if they scrolled up to
-    // read history. If an initialMessageId was requested (e.g. from search),
-    // scroll directly to that message instead.
-    LaunchedEffect(messages.size, initialMessageId) {
-        if (messages.isEmpty()) return@LaunchedEffect
-        if (!hasInitialPosition) {
-            if (initialMessageId != null) {
-                var targetIndex = -1
-                var currentIndex = 0
-                var previousSentAt: Long? = null
-                for (bubble in messages) {
-                    val needsSeparator = previousSentAt == null ||
-                        !TimeFormat.isSameDay(previousSentAt, bubble.sentAt)
-                    if (needsSeparator) {
-                        currentIndex++
-                    }
-                    previousSentAt = bubble.sentAt
-                    if (bubble.id == initialMessageId) {
-                        targetIndex = currentIndex
-                        break
-                    }
-                    currentIndex++
+    val todayLabel = stringResource(R.string.date_today)
+    val yesterdayLabel = stringResource(R.string.date_yesterday)
+
+    // The list rows - a sticky day separator plus its bubbles - are derived from
+    // the messages, not from the frame. Building them inline in the LazyColumn
+    // scope ran a date comparison, and for a separator a zone lookup and format,
+    // for every message on every recomposition, so an in-flight send flipping a
+    // flag redid the whole thread's date math. Keying the work to the messages
+    // keeps it off the recomposition path.
+    val rows = remember(messages, todayLabel, yesterdayLabel) {
+        val zone = TimeFormat.defaultZone()
+        buildList {
+            var previousSentAt: Long? = null
+            messages.forEach { bubble ->
+                val needsSeparator = previousSentAt == null ||
+                    !TimeFormat.isSameDay(previousSentAt, bubble.sentAt, zone)
+                if (needsSeparator) {
+                    val label = TimeFormat.dateSeparator(
+                        timestampMillis = bubble.sentAt,
+                        todayLabel = todayLabel,
+                        yesterdayLabel = yesterdayLabel,
+                        zone = zone,
+                    )
+                    add(ThreadRow.Separator(key = "sep_${bubble.sentAt}", label = label))
                 }
-                if (targetIndex >= 0) {
-                    listState.scrollToItem(targetIndex)
-                } else {
-                    listState.scrollToItem(messages.lastIndex)
-                }
-            } else {
-                listState.scrollToItem(messages.lastIndex)
+                previousSentAt = bubble.sentAt
+                add(ThreadRow.Message(key = bubble.id, bubble = bubble))
             }
-            hasInitialPosition = true
-        } else {
-            listState.animateScrollToItem(messages.lastIndex)
         }
     }
 
-    val todayLabel = stringResource(R.string.date_today)
-    val yesterdayLabel = stringResource(R.string.date_yesterday)
+    // New messages arrive at the end. Scrolling to the latest one keeps the
+    // newest content visible without yanking the user if they scrolled up to
+    // read history. If an initialMessageId was requested (e.g. from search),
+    // scroll directly to that message instead. The separators are already
+    // interleaved in [rows], so a message's index there is its list index.
+    LaunchedEffect(messages.size, initialMessageId) {
+        if (messages.isEmpty()) return@LaunchedEffect
+        if (!hasInitialPosition) {
+            val target = initialMessageId?.let { id ->
+                rows.indexOfFirst { it is ThreadRow.Message && it.bubble.id == id }
+            } ?: -1
+            listState.scrollToItem(if (target >= 0) target else rows.lastIndex)
+            hasInitialPosition = true
+        } else {
+            listState.animateScrollToItem(rows.lastIndex)
+        }
+    }
 
     LazyColumn(
         state = listState,
@@ -458,32 +467,40 @@ private fun MessageList(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        var previousSentAt: Long? = null
-        messages.forEach { bubble ->
-            val needsSeparator = previousSentAt == null ||
-                !TimeFormat.isSameDay(previousSentAt, bubble.sentAt)
-            if (needsSeparator) {
-                val label = TimeFormat.dateSeparator(
-                    timestampMillis = bubble.sentAt,
-                    todayLabel = todayLabel,
-                    yesterdayLabel = yesterdayLabel,
-                )
-                stickyHeader(key = "sep_${bubble.sentAt}") {
-                    DateSeparator(label = label)
+        rows.forEach { row ->
+            when (row) {
+                is ThreadRow.Separator -> stickyHeader(key = row.key) {
+                    DateSeparator(label = row.label)
                 }
-            }
-            previousSentAt = bubble.sentAt
-            item(key = bubble.id) {
-                MessageBubbleRow(
-                    bubble = bubble,
-                    onLongPress = { onLongPress(bubble) },
-                    onResend = { onResendMessage(bubble.id) },
-                    onMessageNumber = onMessageNumber,
-                    resolveContactName = resolveContactName,
-                )
+
+                is ThreadRow.Message -> item(key = row.key) {
+                    MessageBubbleRow(
+                        bubble = row.bubble,
+                        onLongPress = { onLongPress(row.bubble) },
+                        onResend = { onResendMessage(row.bubble.id) },
+                        onMessageNumber = onMessageNumber,
+                        resolveContactName = resolveContactName,
+                    )
+                }
             }
         }
     }
+}
+
+/**
+ * One entry in the message list: a sticky day header or a message bubble.
+ *
+ * Modelling the list as rows rather than recomputing the separator positions
+ * inside the LazyColumn scope keeps the date math off the recomposition path and
+ * gives every entry a stable key. Separator and message keys cannot collide: one
+ * is a prefixed string, the other a row id.
+ */
+private sealed interface ThreadRow {
+    val key: Any
+
+    data class Separator(override val key: Any, val label: String) : ThreadRow
+
+    data class Message(override val key: Any, val bubble: MessageBubble) : ThreadRow
 }
 
 /**
@@ -523,10 +540,16 @@ private fun MessageBubbleRow(
     onMessageNumber: (String) -> Unit,
     resolveContactName: (suspend (String) -> String?)? = null,
 ) {
-    val description = if (bubble.isOutgoing) {
-        stringResource(R.string.thread_outgoing_description, bubble.timestampLabel, bubble.body)
-    } else {
-        stringResource(R.string.thread_incoming_description, bubble.timestampLabel, bubble.body)
+    // The accessibility label folds the whole body into a format string, so
+    // rebuilding it on every recomposition copies every bubble's body again.
+    // Keyed to the bubble and the Resources so a locale change still re-reads it.
+    val resources = LocalResources.current
+    val description = remember(bubble.isOutgoing, bubble.timestampLabel, bubble.body, resources) {
+        resources.getString(
+            if (bubble.isOutgoing) R.string.thread_outgoing_description else R.string.thread_incoming_description,
+            bubble.timestampLabel,
+            bubble.body,
+        )
     }
 
     Row(
