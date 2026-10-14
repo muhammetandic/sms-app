@@ -79,6 +79,13 @@
     <!-- Shown when an incoming message has no text to describe it. -->
     <string name="notification_no_text">Yeni mesaj</string>
 
+    <!-- Post-send failure alert. -->
+    <string name="notification_send_failed_channel_name">Gönderim hataları</string>
+    <string name="notification_send_failed_channel_description">Giden bir mesaj gönderilemediğinde uyarır</string>
+    <string name="notification_send_failed_title">%1$s kişisine mesaj gönderilemedi</string>
+    <string name="notification_send_failed_title_generic">Mesaj gönderilemedi</string>
+    <string name="notification_send_failed_text">Konuşmayı açıp yeniden deneyin.</string>
+
     <string name="spam_title">Önemsiz</string>
     <string name="spam_empty">Önemsiz mesaj yok</string>
     <string name="spam_open">Önemsiz klasörünü aç</string>
@@ -109,6 +116,16 @@
     <string name="conversations_mark_unread">Okunmadı olarak işaretle</string>
     <string name="conversations_mark_read">Okundu olarak işaretle</string>
     <string name="conversations_mark_all_read">Tümünü okundu olarak işaretle</string>
+    <!-- Geri alınabilir toplu işlemden sonra gösterilen Snackbar. -->
+    <string name="action_undo">Geri al</string>
+    <plurals name="action_archived">
+        <item quantity="one">%1$d sohbet arşivlendi</item>
+        <item quantity="other">%1$d sohbet arşivlendi</item>
+    </plurals>
+    <plurals name="action_marked_spam">
+        <item quantity="one">%1$d sohbet önemsizlere taşındı</item>
+        <item quantity="other">%1$d sohbet önemsizlere taşındı</item>
+    </plurals>
 
     <!-- Actions offered when a phone number is tapped inside a message. -->
     <string name="phone_action_message">Mesaj</string>

@@ -81,10 +81,8 @@ class SmsReceiveWorkerTest {
         assertEquals(1, writer.insertedInbound.size)
     }
 
-    /** Runs one receive batch and waits for the worker's completion callback. */
-    private fun awaitReceive(parts: List<SmsPart>) {
-        val done = CountDownLatch(1)
-        SmsReceiveWorker.enqueue(context, parts) { done.countDown() }
-        assertTrue("receive path did not finish", done.await(10, TimeUnit.SECONDS))
+    /** Runs one receive batch synchronously. */
+    private fun awaitReceive(parts: List<SmsPart>) = kotlinx.coroutines.runBlocking {
+        SmsReceiveWorker.handle(context, parts)
     }
 }

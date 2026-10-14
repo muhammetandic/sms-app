@@ -30,6 +30,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -40,6 +43,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +55,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -60,6 +65,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
 import com.anttech.smsapp.ui.components.ConfirmDeleteConversations
 import com.anttech.smsapp.ui.components.ReadOnlyBanner
+import com.anttech.smsapp.ui.components.toggleSelection
+import kotlinx.coroutines.launch
 import com.anttech.smsapp.ui.theme.OnAvatarColor
 import com.anttech.smsapp.ui.theme.avatarColorFor
 import com.anttech.smsapp.ui.theme.iconArchive
@@ -124,6 +131,8 @@ fun ConversationsRoute(
         onMarkRead = viewModel::markConversationsRead,
         onMarkAllRead = viewModel::markAllConversationsRead,
         onArchiveConversations = viewModel::archiveConversations,
+        onUndoArchive = viewModel::undoArchive,
+        onUndoSpam = viewModel::undoSpam,
     )
 }
 
@@ -146,6 +155,8 @@ fun ConversationsScreen(
     onMarkRead: (Set<Long>) -> Unit,
     onMarkAllRead: () -> Unit,
     onArchiveConversations: (Set<Long>) -> Unit,
+    onUndoArchive: (Set<Long>) -> Unit = {},
+    onUndoSpam: (Set<Long>) -> Unit = {},
 ) {
     // Selected conversation ids; an empty set means normal mode, anything else
     // puts the bar into selection mode. Long-pressing a row enters it with that
@@ -161,6 +172,10 @@ fun ConversationsScreen(
     // A dialog is required because deletion is permanent.
     var pendingDelete by remember { mutableStateOf<Set<Long>?>(null) }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
     val closeSelectionLabel = stringResource(R.string.selection_close)
     val pinLabel = stringResource(R.string.conversations_pin)
     val unpinLabel = stringResource(R.string.conversations_unpin)
@@ -170,6 +185,7 @@ fun ConversationsScreen(
     val moveToArchiveLabel = stringResource(R.string.conversations_move_to_archive)
     val deleteLabel = stringResource(R.string.dialog_delete)
     val overflowLabel = stringResource(R.string.app_bar_overflow)
+    val undoLabel = stringResource(R.string.action_undo)
 
     Scaffold(
         // The list scrolls under the bar, so the bar has to be told the content
@@ -206,8 +222,19 @@ fun ConversationsScreen(
                         // All pinned flips to unpin; a mixed or unpinned batch pins.
                         val allPinned = selectedRows.isNotEmpty() && selectedRows.all { it.isPinned }
                         IconButton(onClick = {
-                            onMoveToSpam(selectedIds)
+                            val affected = selectedIds
+                            onMoveToSpam(affected)
                             selectedIds = emptySet()
+                            scope.launch {
+                                val msg = context.resources.getQuantityString(
+                                    R.plurals.action_marked_spam, affected.size, affected.size
+                                )
+                                val result = snackbarHostState.showSnackbar(
+                                    message = msg,
+                                    actionLabel = undoLabel,
+                                )
+                                if (result == SnackbarResult.ActionPerformed) onUndoSpam(affected)
+                            }
                         }) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_spam),
@@ -216,8 +243,19 @@ fun ConversationsScreen(
                             )
                         }
                         IconButton(onClick = {
-                            onArchiveConversations(selectedIds)
+                            val affected = selectedIds
+                            onArchiveConversations(affected)
                             selectedIds = emptySet()
+                            scope.launch {
+                                val msg = context.resources.getQuantityString(
+                                    R.plurals.action_archived, affected.size, affected.size
+                                )
+                                val result = snackbarHostState.showSnackbar(
+                                    message = msg,
+                                    actionLabel = undoLabel,
+                                )
+                                if (result == SnackbarResult.ActionPerformed) onUndoArchive(affected)
+                            }
                         }) {
                             Icon(
                                 painter = painterResource(R.drawable.ic_action_archive),
@@ -316,6 +354,7 @@ fun ConversationsScreen(
                 }
             }
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (state.isReadOnly) {
@@ -363,10 +402,6 @@ fun ConversationsScreen(
         )
     }
 }
-
-/** Selects the row that does not have it yet, deselects the one that does. */
-private fun toggleSelection(selected: Set<Long>, id: Long): Set<Long> =
-    if (id in selected) selected - id else selected + id
 
 /**
  * The app bar's ⋮ button and its menu while nothing is selected.

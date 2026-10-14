@@ -4,13 +4,13 @@ import android.content.ContentResolver
 import android.content.Context
 import android.database.ContentObserver
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 import android.provider.Telephony
-import com.anttech.smsapp.sms.receive.LogTags
 import android.util.Log
 import androidx.annotation.VisibleForTesting
+import com.anttech.smsapp.sms.receive.LogTags
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -39,9 +39,9 @@ class ProviderChangeObserver(
 ) {
     private val resolver: ContentResolver = context.applicationContext.contentResolver
 
-    private val handler = Handler(Looper.getMainLooper())
+    private var debounceJob: Job? = null
 
-    private val observer = object : ContentObserver(handler) {
+    private val observer = object : ContentObserver(null) {
         override fun onChange(selfChange: Boolean, uri: Uri?) {
             // A write this process made. The app mirrors its own deletes and
             // read-state through [PlatformTelephonyMessageWriter], and re-importing
@@ -51,8 +51,6 @@ class ProviderChangeObserver(
             scheduleImport()
         }
     }
-
-    private val importRunnable = Runnable { trigger() }
 
     /** Registers on the SMS and thread tables, including row-level notifications. */
     fun start() {
@@ -71,18 +69,16 @@ class ProviderChangeObserver(
     /** Unregisters so a restarted process does not double-observe. */
     fun stop() {
         resolver.unregisterContentObserver(observer)
-        handler.removeCallbacks(importRunnable)
+        debounceJob?.cancel()
+        debounceJob = null
     }
 
     private fun scheduleImport() {
         // Debounce: coalesce a burst of row writes into one import, and reset
         // the clock on each new write so the import waits for the burst to end.
-        handler.removeCallbacks(importRunnable)
-        handler.postDelayed(importRunnable, debounceMillis)
-    }
-
-    private fun trigger() {
-        scope.launch {
+        debounceJob?.cancel()
+        debounceJob = scope.launch {
+            delay(maxOf(1L, debounceMillis))
             runCatching { onProviderChanged() }
                 .onFailure { Log.w(LogTags.STORE, "Provider change import failed", it) }
         }

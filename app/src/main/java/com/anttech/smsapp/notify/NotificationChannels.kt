@@ -18,6 +18,13 @@ object NotificationChannels {
 
     const val INCOMING_MESSAGES = "incoming_messages"
 
+    /**
+     * Alert an outgoing message failed to send. A separate channel from the
+     * incoming one so a user can silence send failures without silencing new
+     * messages (and vice versa); they are unrelated kinds of alert.
+     */
+    const val SEND_FAILURES = "send_failures"
+
     fun ensure(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
 
@@ -36,7 +43,21 @@ object NotificationChannels {
         }
 
         manager.createNotificationChannel(channel)
-        android.util.Log.d(LogTags.STORE, "Notification channel ready")
+
+        // A failed send is an error, not a message: default importance rather
+        // than high, so it does not buzz like an arriving text.
+        val failures = NotificationChannel(
+            SEND_FAILURES,
+            context.getString(R.string.notification_send_failed_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = context.getString(R.string.notification_send_failed_channel_description)
+            enableVibration(false)
+            setShowBadge(false)
+        }
+
+        manager.createNotificationChannel(failures)
+        android.util.Log.d(LogTags.STORE, "Notification channels ready")
     }
 
     fun canPostNotifications(context: Context): Boolean {

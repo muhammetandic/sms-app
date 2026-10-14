@@ -143,4 +143,44 @@ class ArchiveRepositoryTest {
         assertTrue("a spam row is not archived mail", archive().isEmpty())
         assertEquals(1, conversations.observeSpamConversations().first().size)
     }
+
+    @Test
+    fun `archiving leaves a pinned conversation pinned`() = runTest {
+        repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
+        val id = conversations.conversationIdFor("+15551234567")!!
+        conversations.setConversationsPinned(setOf(id), isPinned = true)
+
+        conversations.setConversationsArchived(setOf(id), isArchived = true)
+
+        // Pin is a property of the conversation, not of the list it currently
+        // appears in, and archiving only flips the archive flag, so the pin
+        // survives the move and the row still floats when restored.
+        assertTrue("the pin must not be cleared by archiving", archive().single().isPinned)
+    }
+
+    @Test
+    fun `restoring an archived conversation keeps it pinned`() = runTest {
+        repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
+        val id = conversations.conversationIdFor("+15551234567")!!
+        conversations.setConversationsPinned(setOf(id), isPinned = true)
+
+        conversations.setConversationsArchived(setOf(id), isArchived = true)
+        conversations.setConversationsArchived(setOf(id), isArchived = false)
+
+        assertTrue("restoring must not drop the pin", inbox().single().isPinned)
+    }
+
+    @Test
+    fun `a pinned conversation returns pinned when an arrival pulls it from the archive`() = runTest {
+        repository.recordInbound(inbound("+15551234567", 1_700_000_000_000L), partCount = 1)
+        val id = conversations.conversationIdFor("+15551234567")!!
+        conversations.setConversationsPinned(setOf(id), isPinned = true)
+        conversations.setConversationsArchived(setOf(id), isArchived = true)
+
+        repository.recordInbound(inbound("+15551234567", 1_700_000_001_000L), partCount = 1)
+
+        // The un-archive write only touches unread_count and is_archived, so a
+        // pinned thread reappears at the top of the inbox rather than sinking.
+        assertTrue("the pin must survive the automatic return", inbox().single().isPinned)
+    }
 }

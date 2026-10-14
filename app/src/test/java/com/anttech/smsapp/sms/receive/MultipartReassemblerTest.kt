@@ -74,6 +74,21 @@ class MultipartReassemblerTest {
     }
 
     @Test
+    fun `the earliest timestamp wins regardless of where the parts sit`() {
+        // The earliest part is not necessarily the first one delivered; the
+        // reassembled send-time must still be the minimum across all parts.
+        val result = MultipartReassembler.reassemble(
+            listOf(
+                part("+1555", "a", 3_000L),
+                part("+1555", "b", 1_000L),
+                part("+1555", "c", 2_000L),
+            ),
+        )
+
+        assertEquals(1_000L, result?.timestampMillis)
+    }
+
+    @Test
     fun `implausible part count is rejected`() {
         val parts = (1..21).map { part("+1555", "chunk$it") }
 

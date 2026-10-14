@@ -104,7 +104,7 @@ class IncomingMessageNotifier(context: Context) {
         )
 
         val builder = NotificationCompat.Builder(appContext, NotificationChannels.INCOMING_MESSAGES)
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(R.drawable.ic_notification)
             // Accent colour: the platform tints the notification's app name and
             // small icon from it. The action labels carry their own colour (see
             // colouredLabel), because the accent is a single colour for the whole

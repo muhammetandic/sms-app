@@ -1,12 +1,11 @@
 package com.anttech.smsapp.data.telephony
 
 import android.content.Context
-import android.os.Looper
 import androidx.test.core.app.ApplicationProvider
 import com.anttech.smsapp.testing.MainDispatcherRule
-import java.time.Duration
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -14,7 +13,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.Shadows.shadowOf
 
 @RunWith(RobolectricTestRunner::class)
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -42,7 +40,6 @@ class ProviderChangeObserverTest {
         // mirrored would be a pointless full scan.
         observer.contentObserver.onChange(true, null)
 
-        shadowOf(Looper.getMainLooper()).idle()
         advanceUntilIdle()
 
         assertEquals(0, imports)
@@ -61,7 +58,6 @@ class ProviderChangeObserverTest {
         observer.contentObserver.onChange(false, null)
         observer.contentObserver.onChange(false, null)
 
-        shadowOf(Looper.getMainLooper()).idle()
         advanceUntilIdle()
 
         assertEquals(1, imports)
@@ -74,13 +70,13 @@ class ProviderChangeObserverTest {
         val observer = observer(debounceMillis = 1_000L) { imports += 1 }
 
         observer.contentObserver.onChange(false, null)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_500L))
+        advanceTimeBy(1_500L)
         advanceUntilIdle()
         assertEquals(1, imports)
 
         // After the debounce window closes, a fresh change starts a new import.
         observer.contentObserver.onChange(false, null)
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_500L))
+        advanceTimeBy(1_500L)
         advanceUntilIdle()
         assertEquals(2, imports)
         observer.stop()
@@ -93,7 +89,7 @@ class ProviderChangeObserverTest {
 
         observer.contentObserver.onChange(false, null)
         observer.stop()
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1_500L))
+        advanceTimeBy(1_500L)
         advanceUntilIdle()
 
         assertEquals(0, imports)

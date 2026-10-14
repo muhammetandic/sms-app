@@ -34,7 +34,6 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.anttech.smsapp.R
-import com.anttech.smsapp.data.DataGraph
 import com.anttech.smsapp.sms.block.BlockedSenders
 import java.util.regex.Pattern
 import kotlin.math.abs
@@ -57,6 +56,7 @@ fun LinkifiedText(
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip,
     onMessage: (String) -> Unit = {},
+    resolveContactName: (suspend (String) -> String?)? = null,
 ) {
     val uriHandler = LocalUriHandler.current
     var tappedNumber by remember { mutableStateOf<String?>(null) }
@@ -82,7 +82,12 @@ fun LinkifiedText(
     )
 
     tappedNumber?.let { number ->
-        PhoneActionsSheet(number = number, onDismiss = { tappedNumber = null }, onMessage = onMessage)
+        PhoneActionsSheet(
+            number = number,
+            onDismiss = { tappedNumber = null },
+            onMessage = onMessage,
+            resolveContactName = resolveContactName,
+        )
     }
 }
 
@@ -113,13 +118,17 @@ internal fun linkify(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PhoneActionsSheet(number: String, onDismiss: () -> Unit, onMessage: (String) -> Unit) {
+private fun PhoneActionsSheet(
+    number: String,
+    onDismiss: () -> Unit,
+    onMessage: (String) -> Unit,
+    resolveContactName: (suspend (String) -> String?)? = null,
+) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
-    val resolver = remember(context) { DataGraph.get(context).contactNames }
     var contactName by remember(number) { mutableStateOf<String?>(null) }
-    LaunchedEffect(number) {
-        contactName = if (resolver.hasPermission()) resolver.displayName(number) else null
+    LaunchedEffect(number, resolveContactName) {
+        contactName = resolveContactName?.invoke(number)
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {

@@ -5,33 +5,11 @@ import android.util.Log
 import com.anttech.smsapp.data.DataGraph
 import com.anttech.smsapp.notify.IncomingMessageNotifier
 import com.anttech.smsapp.sms.block.BlockedSenders
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 
 /**
- * Off-main-thread entry point for incoming SMS.
- *
- * Runs inside the 10 second budget a BroadcastReceiver's pending result grants,
- * so it reuses one process-wide scope instead of creating a scope per message.
+ * Off-main-thread processing for incoming SMS.
  */
 object SmsReceiveWorker {
-
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
-    fun enqueue(context: Context, parts: List<SmsPart>, onComplete: () -> Unit) {
-        val appContext = context.applicationContext
-        scope.launch {
-            try {
-                handle(appContext, parts)
-            } catch (throwable: Throwable) {
-                Log.e(LogTags.RECEIVE, "Failed to handle incoming SMS", throwable)
-            } finally {
-                onComplete()
-            }
-        }
-    }
 
     internal suspend fun handle(context: Context, parts: List<SmsPart>) {
         val message = MultipartReassembler.reassemble(parts) ?: run {

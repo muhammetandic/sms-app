@@ -7,6 +7,7 @@ import com.anttech.smsapp.contacts.ContactNameResolver
 import com.anttech.smsapp.data.ConversationRepository
 import com.anttech.smsapp.data.local.ConversationSummary
 import com.anttech.smsapp.ui.TimeFormat
+import com.anttech.smsapp.ui.components.FolderUiState
 import com.anttech.smsapp.ui.conversations.ConversationRow
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -18,11 +19,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-data class ArchiveUiState(
-    val conversations: List<ConversationRow> = emptyList(),
-    val isLoading: Boolean = true,
-)
 
 /**
  * The archive: conversations the user hid from the inbox without
@@ -42,11 +38,11 @@ class ArchiveViewModel(
 
     private val resolvedNames = MutableStateFlow<Map<String, String?>>(emptyMap())
 
-    val uiState: StateFlow<ArchiveUiState> = combine(
+    val uiState: StateFlow<FolderUiState> = combine(
         repository.observeArchivedConversations(),
         resolvedNames,
     ) { summaries, names ->
-        ArchiveUiState(
+        FolderUiState(
             conversations = summaries.map { summary -> summary.toArchiveRow(names[summary.addressKey]) },
             isLoading = false,
         )
@@ -56,7 +52,7 @@ class ArchiveViewModel(
     }.flowOn(dispatcher).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-        initialValue = ArchiveUiState(),
+        initialValue = FolderUiState(),
     )
 
     /** Contact names cannot be part of the query, so they resolve off the flow. */

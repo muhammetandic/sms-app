@@ -4,7 +4,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import com.anttech.smsapp.data.DataGraph
+import com.anttech.smsapp.data.MessageRepository
 import com.anttech.smsapp.data.local.MessageStatus
+import com.anttech.smsapp.notify.OutgoingFailureNotifier
 import com.anttech.smsapp.sms.receive.LogTags
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -17,6 +19,19 @@ import kotlinx.coroutines.launch
  *
  * Status resolution lives in [MultipartSendTracker]; this class only routes
  * results into it, so the aggregation rules stay testable off-device.
+ *
+ * Nothing here times a send out. The sent and delivery results arrive as
+ * broadcast PendingIntents, which the manifest-declared [SmsSendResultReceiver]
+ * delivers to a fresh process, so a timer owned by this instance would expire on
+ * exactly the process death it was meant to cover - and a send that was still in
+ * flight at that moment would be failed even though its callback was coming.
+ * What can strand a row instead is a result that never arrives: the radio
+ * abandons per-part reports after a short window, and a process killed between
+ * persisting SENDING and the callback leaves a spinner with nothing left to
+ * resolve it. That residue is swept once at startup rather than per send -
+ * MainActivity runs MessageRepository.resolveStuckOutgoing, which fails any row
+ * still SENDING past the platform's callback window - because startup always
+ * happens, while a per-send timer may not.
  */
 class SmsSendCoordinator(
     context: Context,
@@ -35,6 +50,8 @@ class SmsSendCoordinator(
 
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    private val failureNotifier = OutgoingFailureNotifier(appContext)
 
     private val trackers = ConcurrentTrackers()
 
@@ -170,6 +187,7 @@ class SmsSendCoordinator(
             val result = ResultCode.fromPlatformCode(code)
             if (result.isFailure) {
                 repository.failOutgoing(rowId, code)
+                notifySendFailed(repository, rowId)
             } else {
                 repository.markOutgoingSent(rowId)
             }
@@ -189,9 +207,29 @@ class SmsSendCoordinator(
                 outcome.isSuccess -> repository.updateOutgoingStatus(rowId, MessageStatus.SENT)
                 // Keep the platform code behind the failure so the thread can
                 // name it instead of only showing "failed".
-                else -> repository.updateOutgoingError(rowId, outcome.code.platformCode)
+                else -> {
+                    repository.updateOutgoingError(rowId, outcome.code.platformCode)
+                    notifySendFailed(repository, rowId)
+                }
             }
         }
+    }
+
+    /**
+     * Alerts that a send failed.
+     *
+     * Only the asynchronous resolution paths call this. A failure the composer
+     * sees on [send]'s return is shown inline there, and alerting as well would
+     * buzz the user about the screen already in front of them; the parts that
+     * resolve here arrive after that screen is gone, which is exactly when the
+     * alert is the only way the failure is ever noticed.
+     */
+    private suspend fun notifySendFailed(repository: MessageRepository, rowId: Long) {
+        val conversationId = repository.conversations.conversationIdForMessage(rowId)
+        failureNotifier.notify(
+            recipient = conversationId?.let { repository.conversations.recipientFor(it) }.orEmpty(),
+            conversationId = conversationId,
+        )
     }
 
     private companion object {

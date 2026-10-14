@@ -71,4 +71,21 @@ class BlockedSendersTest {
 
         assertTrue(BlockedSenders(context).isBlocked("notify"))
     }
+
+    @Test
+    fun `a number is stored in canonical form, not as typed`() {
+        BlockedSenders(context).add("+1 (555) 123 4567")
+
+        // The stored entry is the canonical key, so the same sender cannot be
+        // added twice under two spellings and a later match uses the number a
+        // thread would group it as.
+        assertEquals(setOf("+15551234567"), BlockedSenders(context).blocks.value)
+    }
+
+    @Test
+    fun `an alphanumeric sender is stored lowercased`() {
+        BlockedSenders(context).add("Notify")
+
+        assertEquals(setOf("notify"), BlockedSenders(context).blocks.value)
+    }
 }

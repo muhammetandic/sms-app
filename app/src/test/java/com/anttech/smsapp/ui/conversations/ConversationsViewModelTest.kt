@@ -265,4 +265,30 @@ class ConversationsViewModelTest {
         val remaining = viewModel.uiState.first { it.conversations.size == 1 }.conversations
         assertEquals(ids.first(), remaining.single().id)
     }
+
+    @Test
+    fun `undoArchive returns archived conversations to the inbox`() = runTest(mainDispatcherRule.testDispatcher) {
+        givenInbound("+15550000001", "one", 1_000L)
+        val viewModel = ConversationsViewModel(conversations, { true }, dispatcher = mainDispatcherRule.testDispatcher)
+        val id = viewModel.uiState.first { !it.isLoading }.conversations.single().id
+
+        viewModel.archiveConversations(setOf(id))
+        assertTrue(viewModel.uiState.first { it.conversations.isEmpty() }.conversations.isEmpty())
+
+        viewModel.undoArchive(setOf(id))
+        assertEquals(1, viewModel.uiState.first { it.conversations.isNotEmpty() }.conversations.size)
+    }
+
+    @Test
+    fun `undoSpam returns spam conversations to the inbox`() = runTest(mainDispatcherRule.testDispatcher) {
+        givenInbound("+15550000001", "one", 1_000L)
+        val viewModel = ConversationsViewModel(conversations, { true }, dispatcher = mainDispatcherRule.testDispatcher)
+        val id = viewModel.uiState.first { !it.isLoading }.conversations.single().id
+
+        viewModel.moveToSpam(setOf(id))
+        assertTrue(viewModel.uiState.first { it.conversations.isEmpty() }.conversations.isEmpty())
+
+        viewModel.undoSpam(setOf(id))
+        assertEquals(1, viewModel.uiState.first { it.conversations.isNotEmpty() }.conversations.size)
+    }
 }

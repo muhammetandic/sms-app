@@ -88,19 +88,19 @@ class ThreadViewModel(
     val uiState: StateFlow<ThreadUiState> = combine(
         messages,
         combine(roleHeld, sending, lastFailure, muted) { role, isSending, failure, mutedConversation ->
-            Quadruple(role, isSending, failure, mutedConversation)
+            ThreadEnvironment(role, isSending, failure, mutedConversation)
         },
-    ) { messages, (roleIsHeld, isSending, failure, mutedConversation) ->
+    ) { messages, env ->
         ThreadUiState(
             messages = messages.map { it.toBubble() },
-            isReadOnly = !roleIsHeld,
-            isSending = isSending,
-            lastFailure = failure,
+            isReadOnly = !env.roleHeld,
+            isSending = env.isSending,
+            lastFailure = env.failure,
             // A thread deep-linked from a notification can open before its address
             // resolves. Sending to an empty recipient is unrecoverable, so the
             // composer stays hidden until there is a real address to send to.
-            canSend = roleIsHeld && recipient.isNotBlank(),
-            isMuted = mutedConversation,
+            canSend = env.roleHeld && recipient.isNotBlank(),
+            isMuted = env.isMuted,
         )
         // Every store emission rebuilds the whole thread's bubbles and formats
         // each timestamp, and viewModelScope would do that on the main thread on
@@ -256,9 +256,9 @@ class ThreadViewModel(
     }
 }
 
-private data class Quadruple<A, B, C, D>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D,
+private data class ThreadEnvironment(
+    val roleHeld: Boolean,
+    val isSending: Boolean,
+    val failure: ThreadFailure?,
+    val isMuted: Boolean,
 )

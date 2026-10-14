@@ -7,6 +7,7 @@ import com.anttech.smsapp.data.ConversationRepository
 import com.anttech.smsapp.data.MessageRepository
 import com.anttech.smsapp.data.local.MessageSearchHit
 import com.anttech.smsapp.ui.TimeFormat
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -51,6 +52,7 @@ class SearchViewModel(
     private val repository: MessageRepository,
     private val conversationRepository: ConversationRepository,
     private val resolveName: suspend (String) -> String?,
+    private val dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -70,7 +72,7 @@ class SearchViewModel(
         }
         // Contact lookup is a provider query; together with the per-row naming
         // it belongs off the composition thread.
-        .flowOn(Dispatchers.Default)
+        .flowOn(dispatcher)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),

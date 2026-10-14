@@ -160,6 +160,13 @@ class NotificationActionReceiver(
         const val ACTION_DELETE = "delete"
 
         /**
+         * Every configurable quick action, in the order the settings screen
+         * shows them. Kept beside the constants so a new action cannot be wired
+         * into the receiver and forgotten on the screen.
+         */
+        val ALL_ACTIONS = listOf(ACTION_REPLY, ACTION_MARK_READ, ACTION_MARK_SPAM, ACTION_DELETE)
+
+        /**
          * Process-wide, mirroring [com.anttech.smsapp.sms.receive.SmsReceiveWorker]:
          * a broadcast can arrive while the process is being torn down, and a
          * fresh scope per action would be cancelled with it.

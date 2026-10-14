@@ -7,6 +7,7 @@ import com.anttech.smsapp.contacts.ContactNameResolver
 import com.anttech.smsapp.data.ConversationRepository
 import com.anttech.smsapp.data.local.ConversationSummary
 import com.anttech.smsapp.ui.TimeFormat
+import com.anttech.smsapp.ui.components.FolderUiState
 import com.anttech.smsapp.ui.conversations.ConversationRow
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -18,11 +19,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-
-data class SpamUiState(
-    val conversations: List<ConversationRow> = emptyList(),
-    val isLoading: Boolean = true,
-)
 
 /**
  * The spam folder: the conversations the user moved out of the inbox.
@@ -39,11 +35,11 @@ class SpamViewModel(
 
     private val resolvedNames = MutableStateFlow<Map<String, String?>>(emptyMap())
 
-    val uiState: StateFlow<SpamUiState> = combine(
+    val uiState: StateFlow<FolderUiState> = combine(
         repository.observeSpamConversations(),
         resolvedNames,
     ) { summaries, names ->
-        SpamUiState(
+        FolderUiState(
             conversations = summaries.map { summary -> summary.toSpamRow(names[summary.addressKey]) },
             isLoading = false,
         )
@@ -52,7 +48,7 @@ class SpamViewModel(
     }.flowOn(dispatcher).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
-        initialValue = SpamUiState(),
+        initialValue = FolderUiState(),
     )
 
     /** Contact names cannot be part of the query, so they resolve off the flow. */

@@ -167,6 +167,16 @@ class ConversationsViewModel(
         viewModelScope.launch { repository.setConversationsArchived(ids, isArchived = true) }
     }
 
+    /** Reverses the last archive operation, moving conversations back to the inbox. */
+    fun undoArchive(ids: Set<Long>) {
+        viewModelScope.launch { repository.setConversationsArchived(ids, isArchived = false) }
+    }
+
+    /** Reverses the last spam operation, moving conversations back to the inbox. */
+    fun undoSpam(ids: Set<Long>) {
+        viewModelScope.launch { repository.setConversationsSpam(ids, isSpam = false) }
+    }
+
     private fun ConversationSummary.toRow(resolvedName: String?) = ConversationRow(
         id = id,
         address = displayAddress.ifBlank { addressKey },

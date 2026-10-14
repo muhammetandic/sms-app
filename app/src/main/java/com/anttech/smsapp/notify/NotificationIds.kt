@@ -26,6 +26,17 @@ object NotificationIds {
      */
     fun forConversation(conversationId: Long?): Int = CONVERSATION_BASE + slot(conversationId)
 
+    private const val FAILED_SEND_BASE = 4_000
+
+    /**
+     * One alert per conversation for a message that failed to send.
+     *
+     * In its own base range so it never collides with the incoming-message
+     * alerts (2_000…); a failed send must be able to appear beside an incoming
+     * one for the same thread without one replacing the other.
+     */
+    fun forFailedSend(conversationId: Long?): Int = FAILED_SEND_BASE + slot(conversationId)
+
     /**
      * The conversation-derived slot for PendingIntent request codes. Distinct
      * from the notification-id space so a notification id and a request code

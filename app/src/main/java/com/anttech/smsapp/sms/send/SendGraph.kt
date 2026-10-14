@@ -1,6 +1,7 @@
 package com.anttech.smsapp.sms.send
 
 import android.content.Context
+import androidx.annotation.VisibleForTesting
 import com.anttech.smsapp.data.DataGraph
 
 /**
@@ -22,4 +23,17 @@ object SendGraph {
                 isRoleHeld = { DataGraph.get(context.applicationContext).roleManager.isHeld() },
             ).also { coordinatorInstance = it }
         }
+
+    /**
+     * Installs a coordinator for the current test, or clears it with null.
+     *
+     * Send results reach a manifest-declared receiver rather than the caller, so
+     * the coordinator has to be process-wide and a test cannot hand a fake to the
+     * code under test any other way. Without this the only path a service like
+     * RespondViaMessageService could take would be the real radio.
+     */
+    @VisibleForTesting
+    internal fun overrideForTest(coordinator: SmsSendCoordinator?) {
+        synchronized(this) { coordinatorInstance = coordinator }
+    }
 }

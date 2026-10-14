@@ -82,6 +82,14 @@
     <!-- Shown when an incoming message has no text to describe it. -->
     <string name="notification_no_text">New message</string>
 
+    <!-- Post-send failure alert. Shown when an outgoing message fails after the
+         composer has gone, so it would otherwise sit unseen as a failed bubble. -->
+    <string name="notification_send_failed_channel_name">Send failures</string>
+    <string name="notification_send_failed_channel_description">Alerts when an outgoing message could not be sent</string>
+    <string name="notification_send_failed_title">Message to %1$s not sent</string>
+    <string name="notification_send_failed_title_generic">Message not sent</string>
+    <string name="notification_send_failed_text">Tap to open the thread and try again.</string>
+
     <string name="spam_title">Spam</string>
     <string name="spam_empty">No spam messages</string>
     <string name="spam_open">Open spam folder</string>
@@ -114,6 +122,16 @@
     <string name="conversations_mark_unread">Mark unread</string>
     <string name="conversations_mark_read">Mark read</string>
     <string name="conversations_mark_all_read">Mark all read</string>
+    <!-- Snackbar shown after a reversible bulk action. -->
+    <string name="action_undo">Undo</string>
+    <plurals name="action_archived">
+        <item quantity="one">%1$d conversation archived</item>
+        <item quantity="other">%1$d conversations archived</item>
+    </plurals>
+    <plurals name="action_marked_spam">
+        <item quantity="one">%1$d conversation moved to spam</item>
+        <item quantity="other">%1$d conversations moved to spam</item>
+    </plurals>
 
     <!-- Actions offered when a phone number is tapped inside a message. -->
     <string name="phone_action_message">Message</string>

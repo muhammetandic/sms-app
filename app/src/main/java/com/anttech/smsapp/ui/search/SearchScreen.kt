@@ -35,6 +35,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.runtime.remember
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -119,10 +124,34 @@ fun SearchScreen(
                         // stay unique when one conversation matches several rows.
                         result.messageId?.let { "m:$it" } ?: "c:${result.conversationId}"
                     }) { result ->
-                        SearchRow(result = result, onClick = { onOpenConversation(result) })
+                        SearchRow(result = result, query = query, onClick = { onOpenConversation(result) })
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Highlights occurrences of [query] in [text] with [highlightStyle].
+ */
+private fun highlightQuery(
+    text: String,
+    query: String,
+    highlightStyle: SpanStyle,
+): AnnotatedString {
+    val trimmed = query.trim()
+    if (trimmed.isEmpty() || text.isEmpty()) return AnnotatedString(text)
+    val lowerText = text.lowercase()
+    val lowerQuery = trimmed.lowercase()
+    return buildAnnotatedString {
+        append(text)
+        var startIndex = 0
+        while (startIndex < text.length) {
+            val index = lowerText.indexOf(lowerQuery, startIndex)
+            if (index == -1) break
+            addStyle(highlightStyle, index, index + lowerQuery.length)
+            startIndex = index + lowerQuery.length
         }
     }
 }
@@ -133,13 +162,23 @@ fun SearchScreen(
  * the conversation list.
  */
 @Composable
-private fun SearchRow(result: SearchResult, onClick: () -> Unit) {
+private fun SearchRow(result: SearchResult, query: String, onClick: () -> Unit) {
     val description = stringResource(
         R.string.search_row_description,
         result.title,
         result.snippet,
         result.timestampLabel,
     )
+    val highlightStyle = SpanStyle(
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary,
+    )
+    val titleText = remember(result.title, query) {
+        highlightQuery(result.title, query, highlightStyle)
+    }
+    val snippetText = remember(result.snippet, query) {
+        highlightQuery(result.snippet, query, highlightStyle)
+    }
 
     Surface(
         modifier = Modifier
@@ -160,13 +199,13 @@ private fun SearchRow(result: SearchResult, onClick: () -> Unit) {
             Avatar(title = result.title, colorKey = result.address)
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = result.title,
+                    text = titleText,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = result.snippet,
+                    text = snippetText,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,

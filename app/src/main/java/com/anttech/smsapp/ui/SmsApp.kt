@@ -48,6 +48,7 @@ import com.anttech.smsapp.ui.permission.openAppSettings
 import com.anttech.smsapp.ui.search.SearchRoute
 import com.anttech.smsapp.ui.search.SearchViewModel
 import com.anttech.smsapp.ui.settings.SettingsRoute
+import com.anttech.smsapp.ui.settings.SettingsViewModel
 import com.anttech.smsapp.ui.spam.SpamRoute
 import com.anttech.smsapp.ui.spam.SpamViewModel
 import com.anttech.smsapp.ui.thread.ThreadRoute
@@ -58,13 +59,13 @@ private object Routes {
     const val SPAM = "spam"
     const val DRAFTS = "drafts"
     const val ARCHIVE = "archive"
-    const val THREAD = "thread/{conversationId}?recipient={recipient}"
+    const val THREAD = "thread/{conversationId}?recipient={recipient}&messageId={messageId}"
     const val COMPOSE = "compose"
     const val SEARCH = "search"
     const val SETTINGS = "settings"
 
-    fun thread(conversationId: Long, recipient: String) =
-        "thread/$conversationId?recipient=${android.net.Uri.encode(recipient)}"
+    fun thread(conversationId: Long, recipient: String, messageId: Long? = null) =
+        "thread/$conversationId?recipient=${android.net.Uri.encode(recipient)}&messageId=${messageId ?: -1L}"
 }
 
 @Composable
@@ -456,14 +457,20 @@ private fun SmsNavHost(
             SearchRoute(
                 viewModel = viewModel,
                 onOpenConversation = { result ->
-                    navController.navigate(Routes.thread(result.conversationId, result.address))
+                    navController.navigate(Routes.thread(result.conversationId, result.address, result.messageId))
                 },
                 onBack = { navController.popBackStack() },
             )
         }
 
         composable(Routes.SETTINGS) {
-            SettingsRoute(onBack = { navController.popBackStack() })
+            val viewModel: SettingsViewModel = viewModel(
+                factory = SettingsViewModel.factory(context),
+            )
+            SettingsRoute(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+            )
         }
 
         composable(
@@ -474,10 +481,15 @@ private fun SmsNavHost(
                     type = NavType.StringType
                     defaultValue = ""
                 },
+                navArgument("messageId") {
+                    type = NavType.LongType
+                    defaultValue = -1L
+                },
             ),
         ) { entry ->
             val conversationId = entry.arguments?.getLong("conversationId") ?: 0L
             val recipient = entry.arguments?.getString("recipient").orEmpty()
+            val messageId = entry.arguments?.getLong("messageId")?.takeIf { it != -1L }
             var threadContactName by remember(recipient) { mutableStateOf<String?>(null) }
             LaunchedEffect(recipient) {
                 threadContactName = contactNames.displayLabel(recipient)
@@ -503,6 +515,8 @@ private fun SmsNavHost(
                 viewModel = viewModel,
                 recipient = recipient,
                 contactName = threadContactName,
+                initialMessageId = messageId,
+                resolveContactName = contactNames::displayName,
                 roleHeldNow = roleHeldNow,
                 onBack = { navController.popBackStack() },
                 onRequestSmsRole = requestSmsRole,

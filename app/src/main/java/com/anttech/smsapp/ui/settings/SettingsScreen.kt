@@ -1,7 +1,5 @@
 package com.anttech.smsapp.ui.settings
 
-import android.content.pm.PackageManager
-import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -39,18 +37,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.anttech.smsapp.R
-import com.anttech.smsapp.sms.block.BlockedSenders
-import com.anttech.smsapp.sms.send.SmsSubscription
-import com.anttech.smsapp.sms.send.SmsSubscriptionSettings
-import com.anttech.smsapp.sms.send.activeSmsSubscriptions
-import com.anttech.smsapp.notify.NotificationActionPreferences
 import com.anttech.smsapp.notify.NotificationActionReceiver
 import com.anttech.smsapp.ui.rememberSmsRoleState
 import com.anttech.smsapp.ui.theme.iconNeutral
@@ -59,58 +51,20 @@ import kotlinx.coroutines.launch
 /**
  * The settings screen.
  *
- * The role status is read live on every resume via [rememberSmsRoleState]: the
- * role can be granted or revoked outside the app, and what this screen shows has
- * to follow. The "set as default" action launches the system role prompt, which
- * is the same request the role banners on other screens make.
+ * [SettingsViewModel] owns every stored preference. Whether the SMS role is held
+ * stays here because it is read live on every resume via [rememberSmsRoleState]:
+ * the role can be granted or revoked outside the app, and what this screen shows
+ * has to follow. The "set as default" action launches the system role prompt,
+ * which is the same request the role banners on other screens make.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsRoute(onBack: () -> Unit) {
-    val context = LocalContext.current
+fun SettingsRoute(
+    viewModel: SettingsViewModel,
+    onBack: () -> Unit,
+) {
     val roleState = rememberSmsRoleState()
     val roleRequestScope = rememberCoroutineScope()
-
-    val versionName = remember {
-        // PackageManager only hands out PackageInfoFlags from API 33; the
-        // flagless overload is deprecated after that, so one path per platform.
-        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.packageManager.getPackageInfo(
-                context.packageName,
-                PackageManager.PackageInfoFlags.of(0),
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            context.packageManager.getPackageInfo(context.packageName, 0)
-        }
-        packageInfo.versionName.orEmpty()
-    }
-
-    // The live subscriptions and the stored choice are captured once when the
-    // screen is entered; the radio rows below keep their own state as the user
-    // picks, and the transport re-reads the preference at send time anyway.
-    val subscriptionSettings = remember { SmsSubscriptionSettings(context) }
-    val subscriptions = remember { activeSmsSubscriptions(context) }
-    var preferredSubscriptionId by remember {
-        mutableStateOf(subscriptionSettings.preferredSubscriptionId())
-    }
-
-    val notificationActions = remember { NotificationActionPreferences(context) }
-    var notificationReplyEnabled by remember {
-        mutableStateOf(notificationActions.isEnabled(NotificationActionReceiver.ACTION_REPLY))
-    }
-    var notificationReadEnabled by remember {
-        mutableStateOf(notificationActions.isEnabled(NotificationActionReceiver.ACTION_MARK_READ))
-    }
-    var notificationSpamEnabled by remember {
-        mutableStateOf(notificationActions.isEnabled(NotificationActionReceiver.ACTION_MARK_SPAM))
-    }
-    var notificationDeleteEnabled by remember {
-        mutableStateOf(notificationActions.isEnabled(NotificationActionReceiver.ACTION_DELETE))
-    }
-
-    val blockedSenders = remember { BlockedSenders(context) }
-    val blockedList by blockedSenders.blocks.collectAsStateWithLifecycle()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     // The role request dialog resolves the requester from the calling
     // package, which only exists when the intent is started for result; a
@@ -128,38 +82,13 @@ fun SettingsRoute(onBack: () -> Unit) {
 
     SettingsScreen(
         isDefaultSmsApp = roleState.isHeld,
-        versionName = versionName,
-        subscriptions = subscriptions,
-        preferredSubscriptionId = preferredSubscriptionId,
-        notificationReplyEnabled = notificationReplyEnabled,
-        notificationReadEnabled = notificationReadEnabled,
-        notificationSpamEnabled = notificationSpamEnabled,
-        notificationDeleteEnabled = notificationDeleteEnabled,
-        blockedSenders = blockedList,
+        state = state,
         onBack = onBack,
         onSetDefaultSms = setDefaultSms,
-        onChooseSubscription = { id ->
-            subscriptionSettings.setPreferredSubscriptionId(id)
-            preferredSubscriptionId = id
-        },
-        onNotificationReplyChanged = {
-            notificationActions.setEnabled(NotificationActionReceiver.ACTION_REPLY, it)
-            notificationReplyEnabled = it
-        },
-        onNotificationReadChanged = {
-            notificationActions.setEnabled(NotificationActionReceiver.ACTION_MARK_READ, it)
-            notificationReadEnabled = it
-        },
-        onNotificationSpamChanged = {
-            notificationActions.setEnabled(NotificationActionReceiver.ACTION_MARK_SPAM, it)
-            notificationSpamEnabled = it
-        },
-        onNotificationDeleteChanged = {
-            notificationActions.setEnabled(NotificationActionReceiver.ACTION_DELETE, it)
-            notificationDeleteEnabled = it
-        },
-        onBlock = { blockedSenders.add(it) },
-        onUnblock = { blockedSenders.remove(it) },
+        onChooseSubscription = viewModel::chooseSubscription,
+        onNotificationActionChanged = viewModel::setNotificationAction,
+        onBlock = viewModel::block,
+        onUnblock = viewModel::unblock,
     )
 }
 
@@ -167,21 +96,11 @@ fun SettingsRoute(onBack: () -> Unit) {
 @Composable
 fun SettingsScreen(
     isDefaultSmsApp: Boolean,
-    versionName: String,
-    subscriptions: List<SmsSubscription>,
-    preferredSubscriptionId: Int?,
-    notificationReplyEnabled: Boolean,
-    notificationReadEnabled: Boolean,
-    notificationSpamEnabled: Boolean,
-    notificationDeleteEnabled: Boolean,
-    blockedSenders: Set<String>,
+    state: SettingsUiState,
     onBack: () -> Unit,
     onSetDefaultSms: () -> Unit,
     onChooseSubscription: (Int?) -> Unit,
-    onNotificationReplyChanged: (Boolean) -> Unit,
-    onNotificationReadChanged: (Boolean) -> Unit,
-    onNotificationSpamChanged: (Boolean) -> Unit,
-    onNotificationDeleteChanged: (Boolean) -> Unit,
+    onNotificationActionChanged: (String, Boolean) -> Unit,
     onBlock: (String) -> Unit,
     onUnblock: (String) -> Unit,
 ) {
@@ -234,7 +153,7 @@ fun SettingsScreen(
             // Only the active subscriptions can be picked from, so the section is
             // hidden entirely when none are readable (no READ_PHONE_STATE, or a
             // failure to query the telephony stack).
-            if (subscriptions.isNotEmpty()) {
+            if (state.subscriptions.isNotEmpty()) {
                 item(key = "sim") {
                     SettingsSection(title = stringResource(R.string.settings_sim)) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -246,14 +165,15 @@ fun SettingsScreen(
                             SubscriptionRow(
                                 label = stringResource(R.string.settings_sim_follow_default),
                                 secondary = null,
-                                selected = preferredSubscriptionId == null,
+                                selected = state.preferredSubscriptionId == null,
                                 onClick = { onChooseSubscription(null) },
                             )
-                            subscriptions.forEach { subscription ->
+                            state.subscriptions.forEach { subscription ->
                                 SubscriptionRow(
                                     label = subscription.label,
                                     secondary = subscription.carrierName,
-                                    selected = preferredSubscriptionId == subscription.subscriptionId,
+                                    selected = state.preferredSubscriptionId ==
+                                        subscription.subscriptionId,
                                     onClick = { onChooseSubscription(subscription.subscriptionId) },
                                 )
                             }
@@ -270,26 +190,15 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        NotificationActionSetting(
-                            label = stringResource(R.string.notification_action_reply),
-                            checked = notificationReplyEnabled,
-                            onCheckedChange = onNotificationReplyChanged,
-                        )
-                        NotificationActionSetting(
-                            label = stringResource(R.string.notification_action_read),
-                            checked = notificationReadEnabled,
-                            onCheckedChange = onNotificationReadChanged,
-                        )
-                        NotificationActionSetting(
-                            label = stringResource(R.string.notification_action_spam),
-                            checked = notificationSpamEnabled,
-                            onCheckedChange = onNotificationSpamChanged,
-                        )
-                        NotificationActionSetting(
-                            label = stringResource(R.string.notification_action_delete),
-                            checked = notificationDeleteEnabled,
-                            onCheckedChange = onNotificationDeleteChanged,
-                        )
+                        // Driven off the receiver's action list so a newly added
+                        // action cannot be handled there and left off the screen.
+                        NOTIFICATION_ACTION_LABELS.forEach { (action, label) ->
+                            NotificationActionSetting(
+                                label = stringResource(label),
+                                checked = state.notificationActions[action] ?: true,
+                                onCheckedChange = { onNotificationActionChanged(action, it) },
+                            )
+                        }
                     }
                 }
             }
@@ -330,14 +239,14 @@ fun SettingsScreen(
                                 Text(stringResource(R.string.settings_block_add))
                             }
                         }
-                        if (blockedSenders.isEmpty()) {
+                        if (state.blockedSenders.isEmpty()) {
                             Text(
                                 text = stringResource(R.string.settings_block_empty),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
-                        blockedSenders.forEach { sender ->
+                        state.blockedSenders.forEach { sender ->
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -374,7 +283,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Text(
-                            text = versionName,
+                            text = state.versionName,
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -384,6 +293,18 @@ fun SettingsScreen(
         }
     }
 }
+
+/**
+ * Notification action to its label, in display order. The action strings come
+ * from [NotificationActionReceiver] so the screen cannot offer an action the
+ * receiver does not understand; the order here is the one the screen shows.
+ */
+private val NOTIFICATION_ACTION_LABELS = listOf(
+    NotificationActionReceiver.ACTION_REPLY to R.string.notification_action_reply,
+    NotificationActionReceiver.ACTION_MARK_READ to R.string.notification_action_read,
+    NotificationActionReceiver.ACTION_MARK_SPAM to R.string.notification_action_spam,
+    NotificationActionReceiver.ACTION_DELETE to R.string.notification_action_delete,
+)
 
 @Composable
 private fun NotificationActionSetting(

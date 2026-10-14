@@ -104,6 +104,8 @@ fun ThreadRoute(
     viewModel: ThreadViewModel,
     recipient: String,
     contactName: String? = null,
+    initialMessageId: Long? = null,
+    resolveContactName: (suspend (String) -> String?)? = null,
     roleHeldNow: Boolean,
     onBack: () -> Unit,
     onRequestSmsRole: () -> Unit,
@@ -169,6 +171,8 @@ fun ThreadRoute(
         snackbarHostState = snackbarHostState,
         recipient = recipient,
         contactName = contactName,
+        initialMessageId = initialMessageId,
+        resolveContactName = resolveContactName,
         onBack = onBack,
         draft = draftText,
         onDraftChange = { text ->
@@ -195,6 +199,8 @@ fun ThreadScreen(
     snackbarHostState: SnackbarHostState,
     recipient: String,
     contactName: String? = null,
+    initialMessageId: Long? = null,
+    resolveContactName: (suspend (String) -> String?)? = null,
     onBack: () -> Unit,
     draft: String,
     onDraftChange: (String) -> Unit,
@@ -319,8 +325,11 @@ fun ThreadScreen(
                 } else {
                     MessageList(
                         messages = state.messages,
+                        initialMessageId = initialMessageId,
                         onLongPress = { selectedBubble = it },
+                        onResendMessage = onResendMessage,
                         onMessageNumber = onMessageNumber,
+                        resolveContactName = resolveContactName,
                     )
                 }
             }
@@ -391,21 +400,47 @@ fun ThreadScreen(
 @Composable
 private fun MessageList(
     messages: List<MessageBubble>,
+    initialMessageId: Long? = null,
     onLongPress: (MessageBubble) -> Unit,
+    onResendMessage: (Long) -> Unit,
     onMessageNumber: (String) -> Unit,
+    resolveContactName: (suspend (String) -> String?)? = null,
 ) {
     val listState = rememberLazyListState()
     var hasInitialPosition by remember { mutableStateOf(false) }
 
     // New messages arrive at the end. Scrolling to the latest one keeps the
     // newest content visible without yanking the user if they scrolled up to
-    // read history. The first load jumps directly to the end: animating across
-    // a long history makes opening a conversation look stalled and composes
-    // every intermediate list position before the latest message is visible.
-    LaunchedEffect(messages.size) {
+    // read history. If an initialMessageId was requested (e.g. from search),
+    // scroll directly to that message instead.
+    LaunchedEffect(messages.size, initialMessageId) {
         if (messages.isEmpty()) return@LaunchedEffect
         if (!hasInitialPosition) {
-            listState.scrollToItem(messages.lastIndex)
+            if (initialMessageId != null) {
+                var targetIndex = -1
+                var currentIndex = 0
+                var previousSentAt: Long? = null
+                for (bubble in messages) {
+                    val needsSeparator = previousSentAt == null ||
+                        !TimeFormat.isSameDay(previousSentAt, bubble.sentAt)
+                    if (needsSeparator) {
+                        currentIndex++
+                    }
+                    previousSentAt = bubble.sentAt
+                    if (bubble.id == initialMessageId) {
+                        targetIndex = currentIndex
+                        break
+                    }
+                    currentIndex++
+                }
+                if (targetIndex >= 0) {
+                    listState.scrollToItem(targetIndex)
+                } else {
+                    listState.scrollToItem(messages.lastIndex)
+                }
+            } else {
+                listState.scrollToItem(messages.lastIndex)
+            }
             hasInitialPosition = true
         } else {
             listState.animateScrollToItem(messages.lastIndex)
@@ -420,21 +455,13 @@ private fun MessageList(
         modifier = Modifier
             .fillMaxSize()
             .testTag(ThreadTestTags.MESSAGE_LIST),
-        // contentPadding rather than padding on the modifier: padding applied to
-        // a LazyColumn is applied to the container, so the top and bottom insets
-        // would be scrolled away and the first and last bubbles would sit flush
-        // against the bar and the composer.
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // Group messages by day. A sticky header floats at the top of the
-        // visible area as the user scrolls through the day's messages, then
-        // slides away when the next group's header reaches it — the standard
-        // SMS UX for temporal orientation.
         var previousSentAt: Long? = null
         messages.forEach { bubble ->
             val needsSeparator = previousSentAt == null ||
-                !TimeFormat.isSameDay(previousSentAt!!, bubble.sentAt)
+                !TimeFormat.isSameDay(previousSentAt, bubble.sentAt)
             if (needsSeparator) {
                 val label = TimeFormat.dateSeparator(
                     timestampMillis = bubble.sentAt,
@@ -450,7 +477,9 @@ private fun MessageList(
                 MessageBubbleRow(
                     bubble = bubble,
                     onLongPress = { onLongPress(bubble) },
+                    onResend = { onResendMessage(bubble.id) },
                     onMessageNumber = onMessageNumber,
+                    resolveContactName = resolveContactName,
                 )
             }
         }
@@ -490,7 +519,9 @@ private fun DateSeparator(label: String) {
 private fun MessageBubbleRow(
     bubble: MessageBubble,
     onLongPress: () -> Unit,
+    onResend: () -> Unit,
     onMessageNumber: (String) -> Unit,
+    resolveContactName: (suspend (String) -> String?)? = null,
 ) {
     val description = if (bubble.isOutgoing) {
         stringResource(R.string.thread_outgoing_description, bubble.timestampLabel, bubble.body)
@@ -527,9 +558,14 @@ private fun MessageBubbleRow(
             shape = shape,
             modifier = Modifier
                 .fillMaxWidth(0.85f)
-                // Long-press opens the message actions; the bubble itself has no
-                // tap behaviour of its own, so the tap is a deliberate no-op.
-                .combinedClickable(onClick = {}, onLongClick = onLongPress)
+                .combinedClickable(
+                    onClick = {
+                        if (bubble.isOutgoing && bubble.status == MessageStatus.FAILED) {
+                            onResend()
+                        }
+                    },
+                    onLongClick = onLongPress,
+                )
                 .semantics(mergeDescendants = true) { contentDescription = description },
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
@@ -541,6 +577,7 @@ private fun MessageBubbleRow(
                         text = bubble.body,
                         style = MaterialTheme.typography.bodyLarge,
                         onMessage = onMessageNumber,
+                        resolveContactName = resolveContactName,
                     )
                 }
                 Row(
@@ -554,6 +591,19 @@ private fun MessageBubbleRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     StatusLabel(status = bubble.status)
+                    if (bubble.isOutgoing && bubble.status == MessageStatus.FAILED) {
+                        IconButton(
+                            onClick = onResend,
+                            modifier = Modifier.size(24.dp).padding(start = 4.dp),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Refresh,
+                                contentDescription = stringResource(R.string.message_action_resend),
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    }
                 }
             }
         }
