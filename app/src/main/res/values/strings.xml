@@ -196,4 +196,22 @@
     <string name="settings_block_empty">No blocked senders</string>
     <string name="settings_block_remove">Unblock</string>
     <string name="phone_action_block">Block</string>
+
+    <string name="settings_sync">Drive backup</string>
+    <string name="settings_sync_body">Back up your messages to your own hidden folder in Google Drive, and merge in the messages your other phones backed up. Only this app can see the folder.</string>
+    <string name="settings_sync_enabled">Back up to Google Drive</string>
+    <string name="settings_sync_never">Not synced yet</string>
+    <string name="settings_sync_success_none">Up to date</string>
+    <plurals name="settings_sync_success">
+        <item quantity="one">%1$d message merged from another device</item>
+        <item quantity="other">%1$d messages merged from another device</item>
+    </plurals>
+    <string name="settings_sync_last">Last synced %1$s</string>
+    <string name="settings_sync_connect">Connect Google Drive</string>
+    <string name="settings_sync_reconnect">Reconnect Google Drive</string>
+    <string name="settings_sync_now">Sync now</string>
+    <string name="settings_sync_running">Syncing…</string>
+    <string name="settings_sync_needs_sign_in">Google Drive access is needed. Reconnect to keep backing up.</string>
+    <string name="settings_sync_failed">The last sync failed. It will be tried again.</string>
+    <string name="settings_sync_failed_detail">The last sync failed: %1$s</string>
 </resources>

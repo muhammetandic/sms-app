@@ -18,6 +18,9 @@ coroutinesTest = "1.11.0"
 robolectric = "4.17"
 workManager = "2.12.0"
 coil = "2.7.0"
+# Google Play services only for the Drive consent/token flow (`Identity`), which
+# is the supported replacement for the shut-down Drive Android API.
+playServicesAuth = "22.0.0"
 # material-icons-core is frozen (last release 1.7.8) and no longer pulls in
 # through material3; the app imports Icons + filled/automirrored glyphs from it.
 materialIconsCore = "1.7.8"
@@ -42,6 +45,7 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 androidx-work-runtime-ktx = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "workManager" }
 androidx-work-testing = { group = "androidx.work", name = "work-testing", version.ref = "workManager" }
+google-play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 androidx-core-testing = { group = "androidx.arch.core", name = "core-testing", version.ref = "coreTesting" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }

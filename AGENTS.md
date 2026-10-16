@@ -24,6 +24,7 @@ Toolchain: AGP 9.4.1, AGP built-in Kotlin 2.4.21 (no `org.jetbrains.kotlin.andro
 - **Two stores, deliberately independent.** Room (`data/local`) is the app's own record, always readable. The Telephony provider (`data/telephony`) is readable only while the app holds `ROLE_SMS` and returns an empty list rather than throwing when it does not. Conversations key on a normalized `address_key`, not the provider's `thread_id`. `dedupe_key` is uniquely indexed: inbound rows dedupe on it, outgoing rows carry a nonce because the same text twice is two real messages.
 - **`sms/`** — `receive/` (deliver receivers, multipart reassembly, dedupe key), `send/` (multi-part result aggregation, SIM selection), `block/`, `role/`, `respond/`. `receive/WapPushDeliverReceiver.kt` is a deliberate no-op: the manifest must declare a `WAP_PUSH_DELIVER` receiver for `ROLE_SMS`, but the app processes SMS only.
 - **`sms/send/SmsTransport.kt`** — interface over `SmsManager` so send orchestration is testable off-device. Platform-only code sits behind such seams; keep it that way.
+- **`sync/`** — optional Google Drive backup, off unless the user sets up a Cloud project and switches it on. Reads and writes Room only, never the provider. `DriveClient` is the seam: the merge/naming/cursor logic is tested against a fake, while `GoogleDriveAuth` and `HttpDriveClient` are hand-tested only. One file per device in the account's hidden Drive `appDataFolder`; merge is an insert-ignore union on the existing unique `dedupe_key`, so it is idempotent. Append-only: deletes, edits, conversation flags and drafts are not propagated. `SyncRepository` holds a `Mutex` because the periodic worker and the "Sync now" button can otherwise overlap.
 - **`ui/`** — one package per screen, each with `*Screen.kt` (Composables) + `*ViewModel.kt`. ViewModels expose `companion object fun factory(...) : ViewModelProvider.Factory`; the NavHost in `ui/SmsApp.kt` wires them. No DI framework — construction is explicit at the call site.
 - **Role is the sharp edge.** `ROLE_SMS` can be revoked mid-session, which flips both stores' availability at once. UI must degrade to read-only, never crash; `ui/components/ReadOnlyBanner.kt` exists for this. Re-read permissions on every resume instead of caching a "granted" flag.
 
@@ -43,7 +44,8 @@ Toolchain: AGP 9.4.1, AGP built-in Kotlin 2.4.21 (no `org.jetbrains.kotlin.andro
 - ViewModels use `testing/MainDispatcherRule` and must pass its `testDispatcher` into `runTest`, so Main and the test share one scheduler.
 - `MessageRepositoryTest` is Robolectric at SDK 30 (real Room schema + unique index). Default Robolectric SDK is 33 (`app/src/test/resources/robolectric.properties`) because it cannot run 36 yet; override per test with `@Config(sdk = [...])`.
 - `SmsDatabaseMigrationTest` migrates every schema in `app/schemas` up through Room's own machinery and validates against the current export.
-- Not covered: anything touching `SmsManager` or the Telephony provider — those need a device on a real carrier.
+- `SyncPayloadTest` is Robolectric because the wire format is Android's `org.json`, a stub off-device. The Drive transport is faked (`SyncRepositoryTest` implements `DriveClient` in memory) rather than mocked.
+- Not covered: anything touching `SmsManager`, the Telephony provider, Play services or the Drive HTTP endpoints — those need a device on a real carrier and a configured Cloud project.
 
 ## Repo
 

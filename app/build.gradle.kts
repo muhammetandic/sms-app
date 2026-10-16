@@ -125,6 +125,8 @@ dependencies {
 
     implementation(libs.androidx.work.runtime.ktx)
 
+    implementation(libs.google.play.services.auth)
+
     implementation(libs.coil.compose)
 
     debugImplementation(libs.androidx.ui.tooling)

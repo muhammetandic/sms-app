@@ -8,6 +8,10 @@ import com.anttech.smsapp.data.telephony.PlatformTelephonyMessageWriter
 import com.anttech.smsapp.data.telephony.ProviderImportCoordinator
 import com.anttech.smsapp.data.telephony.TelephonySmsDataSource
 import com.anttech.smsapp.sms.role.SmsRoleManager
+import com.anttech.smsapp.sync.GoogleAccessTokenProvider
+import com.anttech.smsapp.sync.HttpDriveClient
+import com.anttech.smsapp.sync.SyncRepository
+import com.anttech.smsapp.sync.SyncSettings
 
 /**
  * Entry point for data access, hiding construction of the stores.
@@ -68,6 +72,25 @@ class DataGraph private constructor(
             hasSmsRole = { roleManager.isHeld() },
         )
     }
+
+    /**
+     * Backs the store up to the user's hidden Drive app data folder and merges
+     * in what their other phones put there, over the same database as
+     * [messageRepository].
+     *
+     * Shared because the settings screen's button and the periodic worker must
+     * go through one instance: [SyncRepository] serialises its attempts, and two
+     * instances would not. Construction is cheap - the Play services client is
+     * only reached when a sync actually runs - so this does not bring Google
+     * Play services into the process just by opening the app.
+     */
+    val syncRepository: SyncRepository = SyncRepository(
+        conversationDao = database.conversationDao(),
+        messageDao = database.messageDao(),
+        database = database,
+        settings = SyncSettings(context),
+        drive = HttpDriveClient(GoogleAccessTokenProvider(context)),
+    )
 
     companion object {
         @Volatile

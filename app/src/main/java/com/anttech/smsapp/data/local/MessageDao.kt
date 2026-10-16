@@ -7,6 +7,27 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * One message as the Drive backup carries it, joined with the address of the
+ * conversation it sits in.
+ *
+ * Deliberately not a `messages` row. The local ids (row id, conversation id)
+ * are meaningless on another phone, and the device-local facts of a message -
+ * its provider id, delivery moment, error code and SIM - describe what happened
+ * on the phone it was sent or received on, so copying them to a second phone
+ * would state something that never happened there. What travels instead is the
+ * `dedupe_key`, because that is what makes a merge idempotent.
+ */
+data class MessageExportRow(
+    @ColumnInfo(name = "dedupe_key") val dedupeKey: String,
+    @ColumnInfo(name = "body") val body: String,
+    @ColumnInfo(name = "sent_at") val sentAt: Long,
+    @ColumnInfo(name = "direction") val direction: MessageDirection,
+    @ColumnInfo(name = "part_count") val partCount: Int,
+    @ColumnInfo(name = "address_key") val addressKey: String,
+    @ColumnInfo(name = "display_address") val displayAddress: String,
+)
+
 /** One row where a search query matched, joined with its conversation. */
 data class MessageSearchHit(
     @ColumnInfo(name = "message_id") val messageId: Long,
@@ -167,4 +188,20 @@ interface MessageDao {
     /** Returns the number of rows removed, which is 0 when the id is already gone. */
     @Query("DELETE FROM messages WHERE id = :id")
     suspend fun delete(id: Long): Int
+
+    /**
+     * Every stored message with the address of its conversation, for the Drive
+     * backup. Oldest first so a restored file writes its messages in the order
+     * they happened, which is the order the thread reads them back in.
+     */
+    @Query(
+        """
+        SELECT m.dedupe_key AS dedupe_key, m.body AS body, m.sent_at AS sent_at,
+               m.direction AS direction, m.part_count AS part_count,
+               c.address_key AS address_key, c.display_address AS display_address
+          FROM messages m JOIN conversations c ON c.id = m.conversation_id
+         ORDER BY m.sent_at ASC
+        """,
+    )
+    suspend fun exportForSync(): List<MessageExportRow>
 }

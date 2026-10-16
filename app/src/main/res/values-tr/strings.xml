@@ -189,4 +189,22 @@
     <string name="settings_block_empty">Engellenen gönderen yok</string>
     <string name="settings_block_remove">Engeli kaldır</string>
     <string name="phone_action_block">Engelle</string>
+
+    <string name="settings_sync">Drive yedekleme</string>
+    <string name="settings_sync_body">Mesajlarınızı Google Drive\'daki gizli klasörünüze yedekleyin ve diğer telefonlarınızın yedeklediği mesajları birleştirin. Klasörü yalnızca bu uygulama görebilir.</string>
+    <string name="settings_sync_enabled">Google Drive\'a yedekle</string>
+    <string name="settings_sync_never">Henüz eşitlenmedi</string>
+    <string name="settings_sync_success_none">Güncel</string>
+    <plurals name="settings_sync_success">
+        <item quantity="one">Başka bir cihazdan %1$d mesaj birleştirildi</item>
+        <item quantity="other">Başka bir cihazdan %1$d mesaj birleştirildi</item>
+    </plurals>
+    <string name="settings_sync_last">Son eşitleme %1$s</string>
+    <string name="settings_sync_connect">Google Drive\'a bağlan</string>
+    <string name="settings_sync_reconnect">Google Drive bağlantısını yenile</string>
+    <string name="settings_sync_now">Şimdi eşitle</string>
+    <string name="settings_sync_running">Eşitleniyor…</string>
+    <string name="settings_sync_needs_sign_in">Google Drive erişimi gerekiyor. Yedeklemeye devam etmek için yeniden bağlanın.</string>
+    <string name="settings_sync_failed">Son eşitleme başarısız oldu. Yeniden denenecek.</string>
+    <string name="settings_sync_failed_detail">Son eşitleme başarısız oldu: %1$s</string>
 </resources>
