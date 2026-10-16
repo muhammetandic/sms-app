@@ -55,7 +55,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -174,7 +174,7 @@ fun ConversationsScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val resources = LocalResources.current
 
     val closeSelectionLabel = stringResource(R.string.selection_close)
     val pinLabel = stringResource(R.string.conversations_pin)
@@ -232,7 +232,7 @@ fun ConversationsScreen(
                             onMoveToSpam(affected)
                             selectedIds = emptySet()
                             scope.launch {
-                                val msg = context.resources.getQuantityString(
+                                val msg = resources.getQuantityString(
                                     R.plurals.action_marked_spam, affected.size, affected.size
                                 )
                                 val result = snackbarHostState.showSnackbar(
@@ -253,7 +253,7 @@ fun ConversationsScreen(
                             onArchiveConversations(affected)
                             selectedIds = emptySet()
                             scope.launch {
-                                val msg = context.resources.getQuantityString(
+                                val msg = resources.getQuantityString(
                                     R.plurals.action_archived, affected.size, affected.size
                                 )
                                 val result = snackbarHostState.showSnackbar(

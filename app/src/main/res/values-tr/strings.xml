@@ -112,7 +112,6 @@
     <string name="conversations_move_to_spam">Önemsizlere taşı</string>
     <string name="conversations_move_to_inbox">Gelen kutusuna taşı</string>
     <string name="conversations_move_to_archive">Arşive taşı</string>
-    <string name="conversations_archive">Arşivle</string>
     <string name="conversations_mark_unread">Okunmadı olarak işaretle</string>
     <string name="conversations_mark_read">Okundu olarak işaretle</string>
     <string name="conversations_mark_all_read">Tümünü okundu olarak işaretle</string>

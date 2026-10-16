@@ -118,7 +118,6 @@
     <string name="conversations_move_to_spam">Move to spam</string>
     <string name="conversations_move_to_inbox">Move to inbox</string>
     <string name="conversations_move_to_archive">Move to archive</string>
-    <string name="conversations_archive">Archive</string>
     <string name="conversations_mark_unread">Mark unread</string>
     <string name="conversations_mark_read">Mark read</string>
     <string name="conversations_mark_all_read">Mark all read</string>
