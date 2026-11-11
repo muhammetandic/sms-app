@@ -1,6 +1,8 @@
 package com.anttech.smsapp.notify
 
 import android.app.Application
+import android.app.Notification
+import android.app.NotificationManager
 import android.content.Intent
 import androidx.core.app.RemoteInput
 import androidx.room.Room
@@ -151,26 +153,10 @@ class NotificationActionReceiverTest {
         var sentRecipient: String? = null
         var sentBody: String? = null
 
-        val replyIntent = NotificationActionReceiver.intent(
-            context,
-            NotificationActionReceiver.ACTION_REPLY,
-            conversationId,
-            messageId,
-            recipient = address,
-        )
-        val remoteInput = RemoteInput.Builder(NotificationActionReceiver.KEY_QUICK_REPLY).build()
-        RemoteInput.addResultsToIntent(
-            arrayOf(remoteInput),
-            replyIntent,
-            android.os.Bundle().apply {
-                putCharSequence(NotificationActionReceiver.KEY_QUICK_REPLY, "on my way")
-            },
-        )
-
         NotificationActionReceiver(sendReply = { recipient, body ->
             sentRecipient = recipient
             sentBody = body
-        }).onReceive(context, replyIntent)
+        }).onReceive(context, replyIntent("on my way"))
 
         // The receiver sends from its own scope, so the captured values must be
         // polled until the write inside the coroutine has run.
@@ -189,7 +175,67 @@ class NotificationActionReceiverTest {
     fun `reply with an empty reply text does not send`() {
         var sendCount = 0
 
-        val replyIntent = NotificationActionReceiver.intent(
+        NotificationActionReceiver(sendReply = { _, _ -> sendCount += 1 })
+            .onReceive(context, replyIntent("   "))
+        NotificationActionReceiver.awaitIdle()
+
+        assertEquals(0, sendCount)
+    }
+
+    @Test
+    fun `reply re-posts the alert instead of cancelling it`() {
+        IncomingMessageNotifier(context).notify(
+            InboundMessage(address, "buy now", 1_700_000_000_000L, parts = 1),
+            messageId = messageId,
+            conversationId = conversationId,
+        )
+
+        NotificationActionReceiver(sendReply = { _, _ -> }).onReceive(context, replyIntent("on my way"))
+
+        // The re-post happens on the receiver's own scope, so it is polled for
+        // like the store writes are. The remote-input history is what marks the
+        // entry as the re-post: the original alert above carries none.
+        val manager = context.getSystemService(NotificationManager::class.java)
+        val notificationId = NotificationIds.forConversation(conversationId)
+        val deadline = System.currentTimeMillis() + WRITE_TIMEOUT_MILLIS
+        var history: List<CharSequence>? = null
+        while (System.currentTimeMillis() < deadline) {
+            shadowOf(context.mainLooper).idle()
+            history = shadowOf(manager).getNotification(notificationId)
+                ?.extras?.getCharSequenceArray(Notification.EXTRA_REMOTE_INPUT_HISTORY)
+                ?.toList()
+            if (history != null) break
+            Thread.sleep(POLL_INTERVAL_MILLIS)
+        }
+
+        assertEquals(
+            "the reply should ride in the re-posted alert's remote-input history",
+            listOf<CharSequence>("on my way"),
+            history,
+        )
+        assertEquals("replying marks the alert read", 0, unreadInInbox())
+
+        // The re-posted entry keeps every quick action, so the buttons the
+        // shade still shows stay usable after the reply.
+        assertEquals(
+            4,
+            shadowOf(manager).getNotification(notificationId)?.actions?.size,
+        )
+    }
+
+    private fun inbox() = runBlocking { conversations.observeConversations().first() }
+    private fun spam() = runBlocking { conversations.observeSpamConversations().first() }
+    private fun messages() = runBlocking { repository.observeMessages(conversationId).first() }
+    private fun unreadInInbox() = inbox().single().unreadCount
+    private fun isSpam() = runBlocking { conversations.isSpam(conversationId) }
+
+    /**
+     * A reply broadcast carrying typed text, shaped the way the shade's remote
+     * input delivers it: the results ride inside the intent the action's
+     * button opened with.
+     */
+    private fun replyIntent(text: String): Intent {
+        val intent = NotificationActionReceiver.intent(
             context,
             NotificationActionReceiver.ACTION_REPLY,
             conversationId,
@@ -198,24 +244,13 @@ class NotificationActionReceiverTest {
         )
         RemoteInput.addResultsToIntent(
             arrayOf(RemoteInput.Builder(NotificationActionReceiver.KEY_QUICK_REPLY).build()),
-            replyIntent,
+            intent,
             android.os.Bundle().apply {
-                putCharSequence(NotificationActionReceiver.KEY_QUICK_REPLY, "   ")
+                putCharSequence(NotificationActionReceiver.KEY_QUICK_REPLY, text)
             },
         )
-
-        NotificationActionReceiver(sendReply = { _, _ -> sendCount += 1 })
-            .onReceive(context, replyIntent)
-        NotificationActionReceiver.awaitIdle()
-
-        assertEquals(0, sendCount)
+        return intent
     }
-
-    private fun inbox() = runBlocking { conversations.observeConversations().first() }
-    private fun spam() = runBlocking { conversations.observeSpamConversations().first() }
-    private fun messages() = runBlocking { repository.observeMessages(conversationId).first() }
-    private fun unreadInInbox() = inbox().single().unreadCount
-    private fun isSpam() = runBlocking { conversations.isSpam(conversationId) }
 
     /**
      * Fires a button and waits for its write to land.

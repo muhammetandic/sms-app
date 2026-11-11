@@ -7,11 +7,13 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.RemoteInput
 import com.anttech.smsapp.data.DataGraph
+import com.anttech.smsapp.data.local.MessageDirection
 import com.anttech.smsapp.sms.receive.LogTags
 import com.anttech.smsapp.sms.send.SendGraph
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -22,9 +24,12 @@ import java.util.concurrent.atomic.AtomicInteger
  * action cannot be an activity `PendingIntent` the way the tap target is: it has
  * to be a broadcast that finishes its work and leaves the UI alone.
  *
- * Each action ends by cancelling the notification it came from. The store is the
- * source of truth and the list is driven by a Room flow, so a stale notification
- * left on screen would contradict what the app shows.
+ * Each action ends by removing the notification it came from. The store is the
+ * source of truth and the list is driven by a Room flow, so a stale
+ * notification left on screen would contradict what the app shows. The reply
+ * is the one exception: its cancel would race the remote-input session that
+ * carried it, so it re-posts the alert in its replied state instead (see
+ * [IncomingMessageNotifier.showReplyReceived]).
  *
  * The reply action sends through [sendReply], injectable so tests can observe it
  * without needing a live radio; production falls back to the process-wide
@@ -94,10 +99,28 @@ class NotificationActionReceiver(
                 sendReply?.invoke(recipient.trim(), reply)
                     ?: runCatching { SendGraph.coordinator(context).send(recipient.trim(), reply) }
                         .onFailure { Log.e(LogTags.SEND, "Quick reply failed to send", it) }
-                // A reply answers the alert, so the thread is read and the
-                // notification goes away with the sender.
+                // A reply answers the alert, so the thread counts as read
+                // from here on.
                 conversationRepository.markConversationRead(conversationId)
-                cancel(context, conversationId)
+                // The alert is re-posted rather than cancelled. The shade
+                // holds the notification alive while the remote-input session
+                // that carried the reply is still closing, so a cancel fired
+                // here races that session; where the race loses, the shade is
+                // left showing an entry the system already removed, whose
+                // Okundu and Sil buttons do nothing - the reported failure.
+                // Updating the same id replaces the entry the shade holds
+                // with the replied state instead, and the updated alert
+                // leaves through the ordinary paths: a tap opens the read
+                // thread, any quick action dismisses it, a swipe discards it.
+                IncomingMessageNotifier(context).showReplyReceived(
+                    address = recipient,
+                    body = repository.observeMessages(conversationId).first()
+                        .lastOrNull { it.direction == MessageDirection.INCOMING }?.body,
+                    reply = reply,
+                    messageId = messageId,
+                    conversationId = conversationId,
+                    displayName = DataGraph.get(context).contactNames.displayName(recipient),
+                )
                 Log.d(LogTags.RECEIVE, "Replied from notification to $recipient")
                 return
             }

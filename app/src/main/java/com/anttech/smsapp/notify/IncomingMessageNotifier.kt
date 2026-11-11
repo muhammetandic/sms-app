@@ -62,12 +62,52 @@ class IncomingMessageNotifier(context: Context) {
             displayName = displayName,
         )
 
+    /**
+     * Re-posts a conversation's alert after a quick reply, in the state the
+     * conversation is now in: the message that prompted the reply stays on
+     * top, with the reply appended underneath as remote-input history.
+     *
+     * A direct reply must not cancel its own notification. While the
+     * remote-input session that carried the reply is still closing, the
+     * system shade holds the entry alive, so the cancel fired from the
+     * receiver races that session - and where the race loses, the shade is
+     * left showing an entry the system already removed, whose Okundu and
+     * Sil buttons no longer do anything. Updating under the same id replaces
+     * the entry the shade actually holds, so its buttons stay live, and the
+     * reply confirms itself in what the user still sees.
+     *
+     * `setOnlyAlertOnce` keeps this confirmation from interrupting a second
+     * time, and the updated alert still leaves through the ordinary paths:
+     * a tap opens the now-read thread (which clears its own alert), any
+     * quick action dismisses it, and a swipe discards it.
+     */
+    fun showReplyReceived(
+        address: String,
+        body: String?,
+        reply: CharSequence,
+        messageId: Long,
+        conversationId: Long?,
+        displayName: String? = null,
+    ) =
+        postNotification(
+            address = address,
+            body = body ?: reply.toString(),
+            messageId = messageId,
+            conversationId = conversationId,
+            displayName = displayName,
+            // The reply stands in for the content when the message that
+            // prompted it is already gone, so it must not also repeat below
+            // itself as history.
+            replyHistory = body?.let { reply },
+        )
+
     private fun postNotification(
         address: String,
         body: String,
         messageId: Long,
         conversationId: Long?,
         displayName: String?,
+        replyHistory: CharSequence? = null,
     ) {
         // Guarded inline rather than behind the NotificationChannels helper so
         // the check is visible here. The SDK_INT term is required in practice:
@@ -116,6 +156,11 @@ class IncomingMessageNotifier(context: Context) {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setAutoCancel(true)
+            // An update to an entry the user has already seen - the reply
+            // confirmation - must not interrupt them a second time; only the
+            // first post of an alert is allowed to. The next incoming message
+            // posts without this flag and alerts normally again.
+            .setOnlyAlertOnce(replyHistory != null)
             .setContentIntent(contentIntent)
 
         // Reply first, so the direct-reply slot is the primary action when it
@@ -159,6 +204,11 @@ class IncomingMessageNotifier(context: Context) {
                 ),
             )
         }
+
+        // The reply rides under the content as remote-input history, the way
+        // the shade renders what was typed from it: dimmed, below the message
+        // that prompted it.
+        replyHistory?.let { builder.setRemoteInputHistory(arrayOf(it)) }
 
         val notification = builder.build()
 
