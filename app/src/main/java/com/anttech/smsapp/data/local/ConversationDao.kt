@@ -8,6 +8,26 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * A conversation as the Drive backup reads it: the key that identifies it on
+ * every phone, the name this phone shows for it, and where it was filed.
+ *
+ * Spam and archive travel as their own booleans rather than one folder enum
+ * because they are independent columns here; the folder queries already give
+ * spam precedence, so a conversation filed in both stays consistent without
+ * this record flattening the choice.
+ *
+ * Drafts are not part of this row - they live in their own table - and the
+ * sync repository pairs them in from [DraftDao.exportForSync] before encoding.
+ */
+data class ConversationExportRow(
+    @ColumnInfo(name = "address_key") val addressKey: String,
+    @ColumnInfo(name = "display_address") val displayAddress: String,
+    @ColumnInfo(name = "last_message_at") val lastMessageAt: Long,
+    @ColumnInfo(name = "is_spam") val isSpam: Boolean,
+    @ColumnInfo(name = "is_archived") val isArchived: Boolean,
+)
+
 /** Conversation row plus a snippet of its most recent message, for the thread list. */
 data class ConversationSummary(
     val id: Long,
@@ -167,6 +187,22 @@ interface ConversationDao {
 
     @Query("DELETE FROM conversations WHERE id = :id")
     suspend fun delete(id: Long)
+
+    /**
+     * Every conversation with where it was filed, for the Drive backup.
+     *
+     * Message-less conversations are included on purpose: a draft written to a
+     * recipient with no history exists only as a conversation row, and that
+     * draft is exactly what a restore needs to bring back.
+     */
+    @Query(
+        """
+        SELECT address_key, display_address, last_message_at, is_spam, is_archived
+          FROM conversations
+         ORDER BY id ASC
+        """,
+    )
+    suspend fun exportForSync(): List<ConversationExportRow>
 
     private companion object {
         const val SNIPPET_QUERY = """

@@ -115,6 +115,56 @@ class SyncSettings(context: Context) {
         preferences.edit { putString(KEY_MERGED_VERSIONS, json.toString()) }
     }
 
+    /**
+     * The folder this device last filled in from a backup, per conversation
+     * key, or null when it never did.
+     *
+     * A peer publishes a new snapshot on every one of its syncs, so without
+     * this the same folder would be applied again each time - and moving a
+     * conversation back to the inbox would be undone by the next sync, which
+     * is exactly the local choice a restore must not overwrite. The folder is
+     * applied once; a peer that later files the thread elsewhere still wins
+     * that one fill, because the recorded value differs.
+     */
+    @Synchronized
+    fun appliedFolder(addressKey: String): String? {
+        val raw = preferences.getString(KEY_APPLIED_FOLDERS, null) ?: return null
+        val json = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+        return json.optString(addressKey).takeIf { it.isNotEmpty() }
+    }
+
+    /** Records the folder a merge filled in for one conversation. */
+    @Synchronized
+    fun recordAppliedFolder(addressKey: String, folder: String) {
+        val raw = preferences.getString(KEY_APPLIED_FOLDERS, null)
+        val json = runCatching { JSONObject(raw.orEmpty()) }.getOrDefault(JSONObject())
+        json.put(addressKey, folder)
+        preferences.edit { putString(KEY_APPLIED_FOLDERS, json.toString()) }
+    }
+
+    /**
+     * Whether a merge has already restored drafts for a conversation.
+     *
+     * The same one-shot rule as [appliedFolder], for the same reason: a draft
+     * the user deleted after a restore must stay deleted rather than coming
+     * back with the peer's next upload.
+     */
+    @Synchronized
+    fun draftsRestored(addressKey: String): Boolean =
+        preferences.getStringSet(KEY_DRAFTS_RESTORED, emptySet())?.contains(addressKey) == true
+
+    /** Records that a merge restored drafts for one conversation. */
+    @Synchronized
+    fun recordDraftsRestored(addressKey: String) {
+        // getStringSet hands back the live set; writing into it would mutate
+        // the stored value without going through an editor, so it is copied.
+        val restored = preferences.getStringSet(KEY_DRAFTS_RESTORED, emptySet())
+            ?.toMutableSet()
+            ?: mutableSetOf()
+        restored.add(addressKey)
+        preferences.edit { putStringSet(KEY_DRAFTS_RESTORED, restored) }
+    }
+
     /** Records a completed sync and how many messages it added. */
     fun recordSuccess(syncedAt: Long, mergedCount: Int) {
         preferences.edit {
@@ -169,6 +219,8 @@ class SyncSettings(context: Context) {
         const val KEY_LAST_MERGED_COUNT = "last_merged_count"
         const val KEY_LAST_ERROR = "last_error"
         const val KEY_MERGED_VERSIONS = "merged_versions"
+        const val KEY_APPLIED_FOLDERS = "applied_folders"
+        const val KEY_DRAFTS_RESTORED = "drafts_restored"
 
         /** Long has no null; a negative sentinel reads as "never" on the screen. */
         const val NO_TIME = -1L

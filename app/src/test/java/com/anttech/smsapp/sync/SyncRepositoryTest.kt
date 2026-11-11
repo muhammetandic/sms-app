@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.anttech.smsapp.data.local.AddressNormalizer
 import com.anttech.smsapp.data.local.ConversationEntity
+import com.anttech.smsapp.data.local.DraftEntity
 import com.anttech.smsapp.data.local.ImportStateEntity
 import com.anttech.smsapp.data.local.MessageDirection
 import com.anttech.smsapp.data.local.MessageEntity
@@ -66,6 +67,7 @@ class SyncRepositoryTest {
         repository = SyncRepository(
             conversationDao = database.conversationDao(),
             messageDao = database.messageDao(),
+            draftDao = database.draftDao(),
             database = database,
             settings = settings,
             drive = drive,
@@ -85,7 +87,7 @@ class SyncRepositoryTest {
         assertEquals(SyncOutcome.Success(0), repository.sync())
 
         val payload = SyncPayload.decode(drive.content(ownFileName)!!)
-        assertEquals(listOf("mine"), payload.map { it.body })
+        assertEquals(listOf("mine"), payload.messages.map { it.body })
     }
 
     @Test
@@ -112,7 +114,7 @@ class SyncRepositoryTest {
 
             repository.sync()
 
-            val bodies = SyncPayload.decode(drive.content(ownFileName)!!).map { it.body }
+            val bodies = SyncPayload.decode(drive.content(ownFileName)!!).messages.map { it.body }
             assertEquals(listOf("one", "two", "other"), bodies)
         }
 
@@ -299,6 +301,135 @@ class SyncRepositoryTest {
             assertTrue(after.isPinned)
         }
 
+    // ------------------------------------------------------------- filing
+
+    @Test
+    fun `a peer's spam folder is applied to a conversation this phone has in the inbox`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            seedLocalMessage(body = "mine")
+            drive.put(peerFileName, peerFile(conversations = listOf(filing(spam = true))))
+
+            repository.sync()
+
+            // The peer's filing is the only record of where the user put this
+            // thread; without it the restore would drop it into the inbox.
+            assertTrue(storedConversation()!!.isSpam)
+        }
+
+    @Test
+    fun `a peer's archive folder is applied to a conversation this phone has in the inbox`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            seedLocalMessage(body = "mine")
+            drive.put(peerFileName, peerFile(conversations = listOf(filing(archived = true))))
+
+            repository.sync()
+
+            assertTrue(storedConversation()!!.isArchived)
+            assertTrue(!storedConversation()!!.isSpam)
+        }
+
+    @Test
+    fun `a conversation this phone already filed is not moved by a peer`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            seedLocalMessage(body = "mine")
+            val id = storedConversation()!!.id
+            database.conversationDao().setArchived(listOf(id), isArchived = true)
+
+            drive.put(peerFileName, peerFile(conversations = listOf(filing(spam = true))))
+            repository.sync()
+
+            // Filling only an unfiled thread is what keeps a move made here
+            // from being overwritten by a restore.
+            val after = storedConversation()!!
+            assertTrue(after.isArchived)
+            assertTrue(!after.isSpam)
+        }
+
+    @Test
+    fun `a folder applied once is not applied again after the user moves the thread`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            seedLocalMessage(body = "mine")
+            val payload = peerFile(conversations = listOf(filing(spam = true)))
+            drive.put(peerFileName, payload)
+            repository.sync()
+            assertTrue(storedConversation()!!.isSpam)
+
+            // The user disagrees with the restore and moves the thread back.
+            database.conversationDao().setSpam(storedConversation()!!.id, isSpam = false)
+
+            // The peer publishes again, as it does on every one of its syncs.
+            drive.put(peerFileName, payload)
+            repository.sync()
+
+            assertTrue(!storedConversation()!!.isSpam)
+        }
+
+    @Test
+    fun `a peer's draft is restored when this phone has none`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            // No local message either: a draft to a new recipient exists only as
+            // a conversation, so the restore has to create the thread too.
+            drive.put(
+                peerFileName,
+                peerFile(conversations = listOf(filing(drafts = listOf("see you at 8")))),
+            )
+
+            repository.sync()
+
+            val conversation = storedConversation() ?: error("the draft's conversation was not created")
+            assertEquals("see you at 8", database.draftDao().get(conversation.id))
+        }
+
+    @Test
+    fun `a draft written here is never replaced by a peer's`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            seedLocalMessage(body = "mine")
+            val id = storedConversation()!!.id
+            database.draftDao().save(DraftEntity(conversationId = id, body = "my unfinished text"))
+
+            drive.put(peerFileName, peerFile(conversations = listOf(filing(drafts = listOf("theirs")))))
+            repository.sync()
+
+            // A draft is the user's own unfinished writing; a restore that
+            // replaced it would destroy work the backup cannot give back.
+            assertEquals("my unfinished text", database.draftDao().get(id))
+        }
+
+    @Test
+    fun `a restored draft does not come back after the user deletes it`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            val payload = peerFile(conversations = listOf(filing(drafts = listOf("theirs"))))
+            drive.put(peerFileName, payload)
+            repository.sync()
+            val conversation = storedConversation()!!
+            val draft = database.draftDao().observeDraftConversations().first().single()
+
+            database.draftDao().deleteById(draft.draftId)
+            drive.put(peerFileName, payload)
+            repository.sync()
+
+            assertNull(database.draftDao().get(conversation.id))
+        }
+
+    @Test
+    fun `the published file carries the folders and drafts of this phone`() =
+        runTest(mainDispatcherRule.testDispatcher) {
+            seedLocalMessage(body = "mine")
+            // A thread with nothing to file must not add a record: only the
+            // folder and the draft are information a peer can act on.
+            seedLocalMessage(address = "+15559999999", body = "plain", sentAt = 2_000L)
+            val id = storedConversation()!!.id
+            database.conversationDao().setSpam(id, isSpam = true)
+            database.draftDao().save(DraftEntity(conversationId = id, body = "later"))
+
+            repository.sync()
+
+            val published = SyncPayload.decode(drive.content(ownFileName)!!).conversations.single()
+            assertTrue(published.isSpam)
+            assertEquals(listOf("later"), published.drafts)
+            assertEquals(senderKey, published.addressKey)
+        }
+
     @Test
     fun `a restored message advances the conversation it belongs to`() =
         runTest(mainDispatcherRule.testDispatcher) {
@@ -411,7 +542,10 @@ class SyncRepositoryTest {
             seedLocalMessage(body = "later", sentAt = 2_000L)
             repository.sync()
 
-            assertEquals(listOf("mine", "later"), SyncPayload.decode(drive.content(ownFileName)!!).map { it.body })
+            assertEquals(
+                listOf("mine", "later"),
+                SyncPayload.decode(drive.content(ownFileName)!!).messages.map { it.body },
+            )
         }
 
     // ------------------------------------------------------------------ setup
@@ -437,8 +571,31 @@ class SyncRepositoryTest {
         displayAddress = displayAddress ?: address,
     )
 
-    private fun peerFile(vararg records: MessageExportRow, device: String = "peer") =
-        SyncPayload.encode(device, exportedAt = 1L, messages = records.toList())
+    private fun peerFile(
+        vararg records: MessageExportRow,
+        conversations: List<SyncConversation> = emptyList(),
+        device: String = "peer",
+    ) = SyncPayload.encode(
+        deviceId = device,
+        exportedAt = 1L,
+        messages = records.toList(),
+        conversations = conversations,
+    )
+
+    /** A conversation's folder and drafts, as another phone would publish them. */
+    private fun filing(
+        address: String = "+15551234567",
+        spam: Boolean = false,
+        archived: Boolean = false,
+        drafts: List<String> = emptyList(),
+    ) = SyncConversation(
+        addressKey = AddressNormalizer.conversationKey(address),
+        displayAddress = address,
+        lastMessageAt = 5_000L,
+        isSpam = spam,
+        isArchived = archived,
+        drafts = drafts,
+    )
 
     private suspend fun seedLocalMessage(
         address: String = "+15551234567",

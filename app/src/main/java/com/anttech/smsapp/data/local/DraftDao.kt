@@ -62,4 +62,28 @@ interface DraftDao {
 
     @Query("DELETE FROM drafts WHERE id = :draftId")
     suspend fun deleteById(draftId: Long)
+
+    /**
+     * Every non-empty draft with the address key of its conversation, for the
+     * Drive backup.
+     *
+     * Ordered by row id so a conversation's several drafts keep the order they
+     * were written in; an empty row is the composer's placeholder between a
+     * draft being cleared and its row being dropped, and has nothing to carry.
+     */
+    @Query(
+        """
+        SELECT c.address_key AS address_key, d.body AS body
+          FROM drafts d JOIN conversations c ON c.id = d.conversation_id
+         WHERE d.body <> ''
+         ORDER BY d.id ASC
+        """,
+    )
+    suspend fun exportForSync(): List<DraftExportRow>
 }
+
+/** One stored draft with the address key of its conversation, for the backup. */
+data class DraftExportRow(
+    @ColumnInfo(name = "address_key") val addressKey: String,
+    @ColumnInfo(name = "body") val body: String,
+)

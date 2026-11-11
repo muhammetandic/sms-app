@@ -3,6 +3,8 @@ package com.anttech.smsapp.sync
 import androidx.room.withTransaction
 import com.anttech.smsapp.data.local.ConversationDao
 import com.anttech.smsapp.data.local.ConversationEntity
+import com.anttech.smsapp.data.local.DraftDao
+import com.anttech.smsapp.data.local.DraftEntity
 import com.anttech.smsapp.data.local.MessageDao
 import com.anttech.smsapp.data.local.MessageDirection
 import com.anttech.smsapp.data.local.MessageEntity
@@ -53,15 +55,24 @@ sealed interface SyncOutcome {
  *    from a peer's file would delete every message on a device that synced while
  *    the peer was mid-upload. Propagating them needs a tombstone record the
  *    schema does not have yet, so this version is append-only.
- *  - Conversation flags (spam, pin, mute, archive) and unread counts stay local:
- *    they are where the user filed things on this phone, not facts about the
- *    messages.
+ *  - Pin, mute and unread counts stay local: they are how this phone draws its
+ *    list, not where the user filed the thread.
  *  - Restored messages do not bump an unread badge. They are history the user
  *    has already lived through, and a wall of unread rows for it would be a lie.
+ *
+ * Filing does travel, as one record per conversation: the spam and archive
+ * folders and the thread's drafts. It is applied only to a conversation this
+ * phone has not filed - an inbox thread gets the peer's folder, a draft the
+ * user has not started gets the peer's text - and only once, tracked in
+ * [SyncSettings]. Both rules exist so a restore cannot undo a later decision
+ * here: without the first it would overwrite a move made on this phone, and
+ * without the second the peer's next upload would re-apply the folder the user
+ * just moved out of.
  */
 class SyncRepository(
     private val conversationDao: ConversationDao,
     private val messageDao: MessageDao,
+    private val draftDao: DraftDao,
     private val database: SmsDatabase,
     private val settings: SyncSettings,
     private val drive: DriveClient,
@@ -128,7 +139,12 @@ class SyncRepository(
             }
         }
 
-        val snapshot = SyncPayload.encode(deviceId, now(), messageDao.exportForSync())
+        val snapshot = SyncPayload.encode(
+            deviceId = deviceId,
+            exportedAt = now(),
+            messages = messageDao.exportForSync(),
+            conversations = exportConversations(),
+        )
         // The revision the upload returns is deliberately not recorded as a
         // cursor: the cursor map is for files this device *reads*, and this one
         // is skipped by name on every sync because everything in it came from
@@ -146,25 +162,51 @@ class SyncRepository(
      * today should not silently cost those messages forever.
      */
     private suspend fun mergeFrom(file: DriveFile): Int? {
-        val records = try {
+        val contents = try {
             SyncPayload.decode(drive.download(file.id))
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (unreadable: Exception) {
             return null
         }
-        return merge(records)
+        return merge(contents)
     }
 
-    /** Inserts every record that is not already stored, returning how many landed. */
-    private suspend fun merge(records: List<MessageExportRow>): Int = database.withTransaction {
+    /**
+     * Every conversation with the drafts that belong to it, ready for the wire.
+     *
+     * Two queries rather than a join because a conversation can hold several
+     * drafts: a join would repeat the conversation row per draft, and grouping
+     * here keeps one record per thread.
+     */
+    private suspend fun exportConversations(): List<SyncConversation> {
+        val draftsByKey = draftDao.exportForSync().groupBy({ it.addressKey }, { it.body })
+        return conversationDao.exportForSync()
+            .map { conversation ->
+                SyncConversation(
+                    addressKey = conversation.addressKey,
+                    displayAddress = conversation.displayAddress,
+                    lastMessageAt = conversation.lastMessageAt,
+                    isSpam = conversation.isSpam,
+                    isArchived = conversation.isArchived,
+                    drafts = draftsByKey[conversation.addressKey].orEmpty(),
+                )
+            }
+            // A thread in the inbox with no draft has nothing to file, and
+            // writing a line for every conversation would add one record per
+            // thread to every snapshot for no information.
+            .filter { it.isSpam || it.isArchived || it.drafts.isNotEmpty() }
+    }
+
+    /** Inserts every message that is not already stored, returning how many landed. */
+    private suspend fun merge(contents: SyncContents): Int = database.withTransaction {
         var inserted = 0
         // The conversation timestamp is raised once per conversation at the end
         // rather than once per message, so a 5,000-message history is one write
         // per thread instead of 5,000.
         val raisedTo = mutableMapOf<Long, Long>()
 
-        for (record in records) {
+        for (record in contents.messages) {
             val conversationId = conversationFor(record, raisedTo)
             val rowId = messageDao.insert(
                 MessageEntity(
@@ -194,7 +236,92 @@ class SyncRepository(
         for ((conversationId, newest) in raisedTo) {
             conversationDao.updateLastMessageAt(conversationId, newest)
         }
+
+        // After the messages, so a filing finds the conversation they created
+        // rather than racing it.
+        applyFiling(contents.conversations)
         inserted
+    }
+
+    /**
+     * Applies the folders and drafts a peer's snapshot carries, without
+     * overwriting a filing this phone already has.
+     *
+     * Each conversation is resolved (created when the file brings one this
+     * phone has never seen, which is how a draft-only thread arrives), then the
+     * folder is filled in only if the thread is still in the inbox, and drafts
+     * only if no draft exists here. Both are one-shot per conversation per
+     * folder, recorded in [SyncSettings] so a later peer upload cannot undo a
+     * move the user made after the restore.
+     */
+    private suspend fun applyFiling(states: List<SyncConversation>) {
+        for (state in states) {
+            val filesSomething = state.isSpam || state.isArchived || state.drafts.isNotEmpty()
+            if (!filesSomething) continue
+
+            val conversation = conversationDao.getByAddressKey(state.addressKey)
+                ?: conversationFromFiling(state)
+
+            if (state.isSpam || state.isArchived) applyFolder(conversation, state)
+            if (state.drafts.isNotEmpty()) restoreDrafts(conversation.id, state)
+        }
+    }
+
+    /**
+     * Creates the conversation a filing names, for a thread this phone has never
+     * seen - a draft written to a recipient with no history is the case that
+     * needs it.
+     */
+    private suspend fun conversationFromFiling(state: SyncConversation): ConversationEntity {
+        conversationDao.insertOrIgnore(
+            ConversationEntity(
+                addressKey = state.addressKey,
+                displayAddress = state.displayAddress,
+                lastMessageAt = state.lastMessageAt,
+            ),
+        )
+        return conversationDao.getByAddressKey(state.addressKey)
+            ?: error("Conversation ${state.addressKey} missing immediately after insert")
+    }
+
+    /**
+     * Moves a conversation into the folder the peer filed it in, when this
+     * phone has not filed it at all.
+     *
+     * A thread already in spam or the archive keeps that place: the user put it
+     * there, and a restore is not a reason to disagree. The recorded folder
+     * stops the same one being applied again after the user moves the thread
+     * back to the inbox.
+     */
+    private suspend fun applyFolder(conversation: ConversationEntity, state: SyncConversation) {
+        if (conversation.isSpam || conversation.isArchived) return
+
+        // Spam wins over archive, matching the folder queries, so a peer that
+        // somehow carries both is applied as spam and recorded as such.
+        val folder = if (state.isSpam) FOLDER_SPAM else FOLDER_ARCHIVE
+        if (settings.appliedFolder(state.addressKey) == folder) return
+
+        if (state.isSpam) conversationDao.setSpam(conversation.id, isSpam = true)
+        if (state.isArchived) conversationDao.setArchived(listOf(conversation.id), isArchived = true)
+        settings.recordAppliedFolder(state.addressKey, folder)
+    }
+
+    /**
+     * Brings over the drafts the peer has for a conversation this phone has no
+     * draft for.
+     *
+     * Text the user has started here is never replaced: a draft is their own
+     * unfinished writing, and a restore that overwrote it would lose work no
+     * copy of the backup can give back.
+     */
+    private suspend fun restoreDrafts(conversationId: Long, state: SyncConversation) {
+        if (!draftDao.get(conversationId).isNullOrBlank()) return
+        if (settings.draftsRestored(state.addressKey)) return
+
+        for (body in state.drafts) {
+            draftDao.save(DraftEntity(conversationId = conversationId, body = body))
+        }
+        settings.recordDraftsRestored(state.addressKey)
     }
 
     /**
@@ -237,5 +364,9 @@ class SyncRepository(
 
         /** Room's `insert` returns this when the unique index rejected the row. */
         private const val NO_ROW = -1L
+
+        /** Folder names as [SyncSettings] records them, one per conversation. */
+        private const val FOLDER_SPAM = "spam"
+        private const val FOLDER_ARCHIVE = "archive"
     }
 }

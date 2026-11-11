@@ -64,7 +64,7 @@ class SyncPayloadTest {
             displayAddress = "07700 900123",
         )
 
-        assertEquals(listOf(original), SyncPayload.decode(SyncPayload.encode("dev", 5L, listOf(original))))
+        assertEquals(listOf(original), SyncPayload.decode(SyncPayload.encode("dev", 5L, listOf(original))).messages)
     }
 
     @Test
@@ -92,7 +92,7 @@ class SyncPayloadTest {
     fun `an empty store still writes a readable file`() {
         // A device with nothing to back up must still publish its header, or a
         // fresh phone could never learn that this device exists and has nothing.
-        assertEquals(emptyList<MessageExportRow>(), SyncPayload.decode(SyncPayload.encode("dev", 5L, emptyList())))
+        assertEquals(SyncContents(), SyncPayload.decode(SyncPayload.encode("dev", 5L, emptyList())))
     }
 
     /**
@@ -103,21 +103,21 @@ class SyncPayloadTest {
     fun `a body with newlines stays one record`() {
         val original = row(body = "line one\nline two\r\nline three")
 
-        assertEquals(listOf(original), SyncPayload.decode(SyncPayload.encode("dev", 5L, listOf(original))))
+        assertEquals(listOf(original), SyncPayload.decode(SyncPayload.encode("dev", 5L, listOf(original))).messages)
     }
 
     @Test
     fun `a record with non-ascii text survives`() {
         val original = row(body = "İyi günler 😀", addressKey = "+90", displayAddress = "Ayşe")
 
-        assertEquals(listOf(original), SyncPayload.decode(SyncPayload.encode("dev", 5L, listOf(original))))
+        assertEquals(listOf(original), SyncPayload.decode(SyncPayload.encode("dev", 5L, listOf(original))).messages)
     }
 
     @Test
     fun `blank lines between records are skipped`() {
         val body = "\n" + gunzip(SyncPayload.encode("dev", 5L, listOf(row())))
 
-        assertEquals(1, SyncPayload.decode(gzip(body)).size)
+        assertEquals(1, SyncPayload.decode(gzip(body)).messages.size)
     }
 
     @Test
@@ -125,7 +125,7 @@ class SyncPayloadTest {
         val encoded = gunzip(SyncPayload.encode("dev", 5L, listOf(row(dedupeKey = "good"))))
         val corrupted = encoded + "this is not json\n"
 
-        val records = SyncPayload.decode(gzip(corrupted))
+        val records = SyncPayload.decode(gzip(corrupted)).messages
 
         assertEquals(listOf("good"), records.map { it.dedupeKey })
     }
@@ -136,35 +136,35 @@ class SyncPayloadTest {
         // key would write a row the merge could never match again.
         val raw = """{"b":"hi","t":1,"d":"IN","a":"+1","n":"+1"}"""
 
-        assertEquals(emptyList<MessageExportRow>(), SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")))
+        assertEquals(emptyList<MessageExportRow>(), SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).messages)
     }
 
     @Test
     fun `a record with no address is dropped`() {
         val raw = """{"k":"abc","b":"hi","t":1,"d":"IN","n":"+1"}"""
 
-        assertEquals(emptyList<MessageExportRow>(), SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")))
+        assertEquals(emptyList<MessageExportRow>(), SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).messages)
     }
 
     @Test
     fun `a record with an unknown direction is dropped`() {
         val raw = """{"k":"abc","b":"hi","t":1,"d":"SIDEWAYS","a":"+1","n":"+1"}"""
 
-        assertEquals(emptyList<MessageExportRow>(), SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")))
+        assertEquals(emptyList<MessageExportRow>(), SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).messages)
     }
 
     @Test
     fun `a record with no part count defaults to one`() {
         val raw = """{"k":"abc","b":"hi","t":1,"d":"IN","a":"+1","n":"+1"}"""
 
-        assertEquals(1, SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).single().partCount)
+        assertEquals(1, SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).messages.single().partCount)
     }
 
     @Test
     fun `a record with no display address falls back to the key`() {
         val raw = """{"k":"abc","b":"hi","t":1,"d":"IN","a":"+1555"}"""
 
-        assertEquals("+1555", SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).single().displayAddress)
+        assertEquals("+1555", SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).messages.single().displayAddress)
     }
 
     @Test
@@ -173,7 +173,85 @@ class SyncPayloadTest {
         // an older one reading the file must not choke on it.
         val raw = """{"k":"abc","b":"hi","t":1,"d":"IN","a":"+1","n":"+1","future":"whatever"}"""
 
-        assertEquals("abc", SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).single().dedupeKey)
+        assertEquals("abc", SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).messages.single().dedupeKey)
+    }
+
+    // ------------------------------------------------------ conversation filings
+
+    private fun filing(
+        addressKey: String = "+15551234567",
+        displayAddress: String = "Ayşe",
+        lastMessageAt: Long = 4_000L,
+        isSpam: Boolean = false,
+        isArchived: Boolean = false,
+        drafts: List<String> = emptyList(),
+    ) = SyncConversation(
+        addressKey = addressKey,
+        displayAddress = displayAddress,
+        lastMessageAt = lastMessageAt,
+        isSpam = isSpam,
+        isArchived = isArchived,
+        drafts = drafts,
+    )
+
+    private fun encoded(vararg conversations: SyncConversation): ByteArray =
+        SyncPayload.encode("dev", 5L, emptyList(), conversations.toList())
+
+    @Test
+    fun `a conversation's folder and drafts survive the round trip`() {
+        val original = filing(
+            addressKey = "+447700900123",
+            displayAddress = "Ayşe",
+            lastMessageAt = 1_700_000_000_000L,
+            isSpam = true,
+            drafts = listOf("first draft", "second draft"),
+        )
+
+        assertEquals(SyncContents(conversations = listOf(original)), SyncPayload.decode(encoded(original)))
+    }
+
+    @Test
+    fun `an archived conversation is distinguished from a spam one`() {
+        val archived = filing(isArchived = true)
+
+        val decoded = SyncPayload.decode(encoded(archived)).conversations.single()
+
+        assertTrue(decoded.isArchived)
+        assertTrue(!decoded.isSpam)
+    }
+
+    @Test
+    fun `a draft with newlines stays one filing`() {
+        // The same guarantee the message records have: a newline in a body must
+        // not split one line into two and turn the tail into a lost record.
+        val original = filing(drafts = listOf("line one\nline two\r\nline three"))
+
+        assertEquals(SyncContents(conversations = listOf(original)), SyncPayload.decode(encoded(original)))
+    }
+
+    @Test
+    fun `a filing with no address key is dropped`() {
+        val raw = """{"conversation":"","name":"Ayşe","spam":true}"""
+
+        assertTrue(SyncPayload.decode(gzip("{\"v\":1}\n$raw\n")).conversations.isEmpty())
+    }
+
+    @Test
+    fun `a filing line is not read as a message`() {
+        // A filing has no dedupe key, so an older build reading this file drops
+        // it - which is why the added line needed no format bump. This build
+        // must sort it into the other half of the contents instead.
+        val contents = SyncPayload.decode(encoded(filing()))
+
+        assertTrue(contents.messages.isEmpty())
+        assertEquals(1, contents.conversations.size)
+    }
+
+    @Test
+    fun `a file with only messages decodes to no filings`() {
+        val contents = SyncPayload.decode(SyncPayload.encode("dev", 5L, listOf(row())))
+
+        assertTrue(contents.conversations.isEmpty())
     }
 
     @Test

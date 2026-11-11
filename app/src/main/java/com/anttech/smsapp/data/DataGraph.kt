@@ -87,6 +87,7 @@ class DataGraph private constructor(
     val syncRepository: SyncRepository = SyncRepository(
         conversationDao = database.conversationDao(),
         messageDao = database.messageDao(),
+        draftDao = database.draftDao(),
         database = database,
         settings = SyncSettings(context),
         drive = HttpDriveClient(GoogleAccessTokenProvider(context)),
