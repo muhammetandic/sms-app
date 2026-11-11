@@ -16,6 +16,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Debug installs as `com.anttech.smsapp.debug` alongside a release build.
 
+**Never uninstall or clear app data on a device, only update in place.** The install on the connected device is the user's daily driver: `adb uninstall`, `pm clear`, `pm uninstall`, `installDebug` preceded by any of them, or `-r` replaced by a clean install destroys the local Room store and the SMS role, which the user does not want to set up again. Use `./gradlew :app:installDebug` or `adb install -r` only, and treat a downgrade or signature conflict as a reason to stop and ask rather than to wipe.
+
 Toolchain: AGP 9.4.1, AGP built-in Kotlin 2.4.21 (no `org.jetbrains.kotlin.android`), KSP, Gradle 9.8.1 wrapper, `minSdk 30` / `compileSdk` `targetSdk` 37, Java 21. Versions live in `gradle/libs.versions.toml` — add new dependencies there, never inline coordinates in `app/build.gradle.kts`. KSP registers generated sources via the (now-opted-back-in) `kotlin.sourceSets`, so keep `android.disallowKotlinSourceSets=false` in `gradle.properties`.
 
 ## Architecture
